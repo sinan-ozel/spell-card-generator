@@ -1,0 +1,92 @@
+name: Generate Spell Card
+
+on:
+  workflow_dispatch:
+    inputs:
+      SPELL_NAME:
+        description: "Spell name"
+        required: true
+        default: "Acid Splash"
+      CASTING_TIME:
+        description: "Casting time"
+        required: true
+        default: "Action"
+      RANGE:
+        description: "Spell range"
+        required: true
+        default: "60 feet"
+      COMPONENTS:
+        description: "Spell components (V, S, M)"
+        required: true
+        default: "V, S"
+      DURATION:
+        description: "Duration"
+        required: true
+        default: "Instantaneous"
+      DESCRIPTION:
+        description: "Spell description"
+        required: true
+        default: |
+          You hurl a bubble of acid. Choose one creature you can see within range, or choose two creatures you can see within range that are within 5 feet of each other. A target must succeed on a Dexterity saving throw or take 1d6 acid damage.
+
+          This spell's damage increases by 1d6 when you reach 5th level (2d6), 11th level (3d6), and 17th level (4d6).
+      SCHOOL:
+        description: "Spell school"
+        required: true
+        default: "Conjuration"
+      LEVEL:
+        description: "Spell level (number)"
+        required: true
+        default: "0"
+
+permissions:
+  contents: write
+
+
+jobs:
+  build-and-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up input/output directories
+        run: |
+          mkdir -p template cards
+          echo "Dummy input file" > template/dummy.txt
+
+      - name: Build Docker image
+        run: docker build -t spell_card_filler .
+
+      - name: Run spell card generator
+        run: |
+          docker run --rm \
+            -e SPELL_NAME="${{ inputs.SPELL_NAME }}" \
+            -e CASTING_TIME="${{ inputs.CASTING_TIME }}" \
+            -e RANGE="${{ inputs.RANGE }}" \
+            -e COMPONENTS="${{ inputs.COMPONENTS }}" \
+            -e DURATION="${{ inputs.DURATION }}" \
+            -e DESCRIPTION="${{ inputs.DESCRIPTION }}" \
+            -e SCHOOL="${{ inputs.SCHOOL }}" \
+            -e LEVEL="${{ inputs.LEVEL }}" \
+            -v ${{ github.workspace }}/template:/app/template \
+            -v ${{ github.workspace }}/cards:/app/cards \
+            spell_card_filler
+
+      - name: Upload spell card output
+        uses: actions/upload-artifact@v4
+        with:
+          name: spell-card
+          path: cards/
+
+      - name: Commit PDF back to repo
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch
+          git checkout main
+          mkdir -p cards
+          git add cards/*.jpg -f
+          git commit -m "Anwe " || echo "No changes to commit"
+          git push origin main
