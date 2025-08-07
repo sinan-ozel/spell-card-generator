@@ -3,6 +3,7 @@ version: "3.8"
 services:
   spell_card_filler:
     build: .
+    command: python main.py
     environment:
       SPELL_NAME: "Acid Splash"
       CASTING_TIME: "Action"
