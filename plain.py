@@ -4,6 +4,8 @@ import re
 
 from PIL import Image, ImageDraw, ImageFont
 
+from spell import Spell
+
 
 def draw_text(draw, position, text, font, max_width):
     lines = textwrap.wrap(text, width=max_width)
@@ -30,46 +32,41 @@ def level_text(level: int) -> str:
         raise ValueError(f"Allowed spell levels: {list(range(10))}")
 
 
-def generate(
-        title: str,
-        casting_time: str,
-        spell_range: str,
-        components: str,
-        duration: str,
-        description: str,
-        school: str,
-        level: int
-    ) -> None:
+def generate(spell: Spell) -> None:
     image = Image.open("template/0.jpg").convert("RGB")
     draw = ImageDraw.Draw(image)
     width = image.size[0]
 
-    font_title = ImageFont.truetype("fonts/Raleway/static/Raleway-Bold.ttf", 26)
+    font_title = ImageFont.truetype("fonts/Raleway/static/Raleway-Bold.ttf", 24)
     font_label = ImageFont.truetype("fonts/Raleway/static/Raleway-Italic.ttf", 14)
     font_body  = ImageFont.truetype("fonts/EB_Garamond/EBGaramond-VariableFont_wght.ttf", 16)
-    font_footer = ImageFont.truetype("fonts/Raleway/static/Raleway-Bold.ttf", 14)
-
-    duration = os.environ.get("DURATION", "")
-    description = os.environ.get("DESCRIPTION", "")
-    school = os.environ.get("SCHOOL", "")
-    level = int(os.environ.get("LEVEL"))
+    font_footer = ImageFont.truetype("fonts/Raleway/static/Raleway-Bold.ttf", 16)
 
     # Title (centered)
-    center_text(draw, title, font_title, y=24, image_width=width)
+    center_text(draw, spell.title, font_title, y=22, image_width=width)
 
     # Labels
-    center_text(draw, casting_time, font_label, y=85, image_width=width / 2)
-    center_text(draw, spell_range, font_label, y=85, image_width=width / 2, x_offset=width / 2)
-    center_text(draw, components, font_label, y=130, image_width=width / 2)
-    center_text(draw, duration, font_label, y=130, image_width=width / 2, x_offset=width / 2)
+    center_text(draw, spell.casting_time, font_label, y=85, image_width=width / 2 + 16)
+    center_text(draw, spell.range, font_label, y=85, image_width=width / 2, x_offset=width / 2 - 8)
+    center_text(draw, spell.components, font_label, y=130, image_width=width / 2 + 16)
+    center_text(draw, spell.duration, font_label, y=130, image_width=width / 2, x_offset=width / 2 - 8)
 
     # Description
-    draw_text(draw, (45, 180), description, font=font_body, max_width=48)
+    draw_text(draw, (40, 170), spell.description, font=font_body, max_width=50)
 
     # Footer
-    center_text(draw, school, font_footer, y=490, image_width=width / 2)
-    center_text(draw, level_text(level), font_footer, y=490, image_width=width / 2, x_offset=width / 2)
+    center_text(draw,
+                spell.school,
+                font_footer,
+                y=482,
+                image_width=width / 2 + 16)
+    center_text(draw,
+                level_text(spell.level),
+                font_footer,
+                y=482,
+                image_width=width / 2,
+                x_offset=width / 2 - 8)
 
-    safe_title = title.replace(":", "")
-    filename = f"cards/L{level}.{safe_title}.jpg"
+    safe_title = spell.title.replace(":", "")
+    filename = f"cards/L{spell.level}.{safe_title}.jpg"
     image.save(filename)
