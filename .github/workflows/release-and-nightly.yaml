@@ -61,8 +61,8 @@ jobs:
           # Compare semver
           if [ "$VERSION" = "$TAG" ]; then
             # Nightly build
-            DATE=$(date +'%Y%m%d-%H%M')
-            NIGHTLY_TAG="${VERSION}-nightly-${DATE}"
+            DATE=$(date +'%Y%m%d%H%M')
+            NIGHTLY_TAG="${VERSION}+${DATE}"
             echo "nightly_tag=$NIGHTLY_TAG" >> $GITHUB_OUTPUT
             echo "release_tag=" >> $GITHUB_OUTPUT
           else
