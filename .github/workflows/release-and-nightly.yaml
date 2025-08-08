@@ -50,6 +50,7 @@ jobs:
       - name: Compare version and tag
         id: compare
         run: |
+          pip install packaging==25.0
           VERSION="${{ steps.get_version.outputs.version }}"
           TAG="${{ steps.get_tag.outputs.tag }}"
           echo "Code version: $VERSION"
