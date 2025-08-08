@@ -62,7 +62,7 @@ jobs:
           if [ "$VERSION" = "$TAG" ]; then
             # Nightly build
             DATE=$(date +'%Y%m%d%H%M')
-            NIGHTLY_TAG="${VERSION}+${DATE}"
+            NIGHTLY_TAG="${VERSION}-main-${DATE}"
             echo "nightly_tag=$NIGHTLY_TAG" >> $GITHUB_OUTPUT
             echo "release_tag=" >> $GITHUB_OUTPUT
           else
