@@ -1,4 +1,6 @@
+import re
 from typing import Optional
+import logging
 
 import requests
 from fastapi import BackgroundTasks, FastAPI
@@ -7,6 +9,9 @@ from pydantic import BaseModel, HttpUrl
 
 from plain import generate
 from spell import Spell
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Spell Card Generator API",
@@ -39,9 +44,9 @@ class SpellRequest(BaseModel):
 def notify_callback(callback_url: str, payload: dict):
     try:
         requests.post(callback_url, json=payload, timeout=10)
-        print(f"✅ Callback sent to {callback_url}")
+        logger.debug("Callback sent to %s", callback_url)
     except Exception as e:
-        print(f"❌ Callback to {callback_url} failed: {e}")
+        logger.info("Callback to %s failed: %s", callback_url, e)
 
 
 @app.post("/v1/generate")
@@ -53,16 +58,18 @@ async def create_spell_card(request: SpellRequest,
 
 
 def generate_and_notify(spell: Spell, callback_url: Optional[str]):
-    generate(spell)
-    safe_title = spell.title.replace(":", "").replace(" ", "_")
+    title_normalized = re.sub(r'\s+', ' ', spell.title.strip())
+    safe_title = title_normalized.replace(":", "").replace(" ", "-")
     filename = f"L{spell.level}.{safe_title}.jpg"
-    f"cards/{filename}"
+    filepath = f"cards/{filename}"
+    image = generate(spell)
+    image.save(filepath)
     payload = {
         "status": "ready",
         "title": spell.title,
         "level": spell.level,
         "filename": filename,
-        "url": f"/cards/{filename}",
+        "url": f"/{filepath}",
     }
     if callback_url:
         notify_callback(callback_url, payload)

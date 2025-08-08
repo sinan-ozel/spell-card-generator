@@ -36,7 +36,7 @@ def level_text(level: int) -> str:
         raise ValueError(f"Allowed spell levels: {list(range(10))}")
 
 
-def generate(spell: Spell) -> None:
+def generate(spell: Spell) -> Image:
     image = Image.open("template/0.jpg").convert("RGB")
     draw = ImageDraw.Draw(image)
     width = image.size[0]
@@ -97,6 +97,4 @@ def generate(spell: Spell) -> None:
         x_offset=width / 2 - 8,
     )
 
-    safe_title = spell.title.replace(":", "")
-    filename = f"cards/L{spell.level}.{safe_title}.jpg"
-    image.save(filename)
+    return image

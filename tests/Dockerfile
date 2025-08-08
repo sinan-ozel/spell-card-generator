@@ -4,6 +4,7 @@ WORKDIR /tests
 
 # Install pytest and any other dependencies
 RUN pip install --no-cache-dir pytest
+RUN pip install --no-cache-dir pytest-depends
 RUN pip install --no-cache-dir requests
 
 # Copy tests and optionally source code if needed for imports

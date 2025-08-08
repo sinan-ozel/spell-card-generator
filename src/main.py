@@ -29,4 +29,8 @@ if __name__ == "__main__":
         int(os.environ.get("LEVEL")),
     )
 
-    generate(spell)
+    image = generate(spell)
+
+    filename = f"cards/L{spell.level}.{spell.title}.jpg"
+    image.save(filename)
+
