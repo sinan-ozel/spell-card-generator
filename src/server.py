@@ -45,9 +45,8 @@ def notify_callback(callback_url: str, payload: dict):
 
 
 @app.post("/v1/generate")
-async def create_spell_card(
-    request: SpellRequest, background_tasks: BackgroundTasks
-):
+async def create_spell_card(request: SpellRequest,
+                            background_tasks: BackgroundTasks):
     spell = Spell(**request.spell_data.dict())
     background_tasks.add_task(generate_and_notify, spell, request.callback_url)
     return {"status": "queued", "title": spell.title}
