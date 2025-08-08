@@ -37,6 +37,7 @@ jobs:
       - name: Get FastAPI version from code
         id: get_version
         run: |
+          pip install -r requirements.txt
           VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); import server; print(server.app.version)")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
