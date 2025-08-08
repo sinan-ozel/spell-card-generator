@@ -25,20 +25,60 @@ app = FastAPI(
 app.mount("/cards", StaticFiles(directory="cards"), name="cards")
 
 
+from pydantic import Field
+
 class SpellData(BaseModel):
-    title: str
-    casting_time: str
-    spell_range: str
-    components: str
-    duration: str
-    description: str
-    school: str
-    level: int
+    """Represents the details of a Dungeons & Dragons spell for card generation."""
+    title: str = Field(
+        ...,
+        description=f"Name of the spell. Max {Spell.MAX_TITLE_CHARS} characters",
+        example="Acid Splash"
+    )
+    casting_time: str = Field(
+        ...,
+        description="Time required to cast the spell.",
+        example="1 action"
+    )
+    spell_range: str = Field(
+        ...,
+        description="Effective range of the spell.",
+        example="60 feet"
+    )
+    components: str = Field(
+        ...,
+        description="Spell components (V, S, M), validated and formatted.",
+        example="V, S"
+    )
+    duration: str = Field(
+        ...,
+        description="Duration of the spell's effect.",
+        example="Instantaneous"
+    )
+    description: str = Field(
+        ...,
+        description="Description of the spell's effect and mechanics."
+                    f" Max {Spell.MAX_DESCRIPTION_CHARS} characters",
+        example="You hurl a bubble of acid..."
+    )
+    school: str = Field(
+        ...,
+        description="Magical school the spell belongs to (e.g., Evocation).",
+        example="Conjuration"
+    )
+    level: int = Field(
+        ...,
+        description="Spell level, must be between 0 (cantrip) and 9 (highest).",
+    )
 
 
 class SpellRequest(BaseModel):
-    spell_data: SpellData
-    callback_url: Optional[HttpUrl] = None
+    """Request for generating a spell card."""
+    spell_data: SpellData = Field(..., description="Spell details")
+    callback_url: Optional[HttpUrl] = Field(
+        None,
+        description="Optional callback URL to notify when the card is ready",
+        example="http://localhost:9999/callback"
+    )
 
 
 def notify_callback(callback_url: str, payload: dict):
@@ -49,9 +89,51 @@ def notify_callback(callback_url: str, payload: dict):
         logger.info("Callback to %s failed: %s", callback_url, e)
 
 
-@app.post("/v1/generate")
+@app.post(
+    "/v1/generate",
+    responses={
+        200: {
+            "description": "Spell card generation successfully queued.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "status": "queued",
+                        "title": "Acid Splash"
+                    }
+                }
+            }
+        },
+        422: {
+            "description": "Validation error. The request body is invalid.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": [
+                            {
+                                "loc": ["body", "spell_data", "title"],
+                                "msg": "field required",
+                                "type": "value_error.missing"
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    }
+)
 async def create_spell_card(request: SpellRequest,
                             background_tasks: BackgroundTasks):
+    """
+    Queue a spell card for generation.
+
+    Accepts spell details and an optional callback URL. The spell card is generated
+    asynchronously in the background. If a callback URL is provided, a POST request
+    will be sent to that URL with the card's status and download information once
+    generation is complete.
+
+    Returns:
+        dict: Status and spell title indicating the card generation has been queued.
+    """
     spell = Spell(**request.spell_data.dict())
     background_tasks.add_task(generate_and_notify, spell, request.callback_url)
     return {"status": "queued", "title": spell.title}

@@ -17,5 +17,4 @@ services:
       SCHOOL: "Conjuration"
       LEVEL: 0
     volumes:
-      - ./template:/app/template
       - ./cards:/app/cards
