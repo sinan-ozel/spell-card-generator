@@ -1,0 +1,100 @@
+name: Release & Nightly
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests (docker-compose)
+        run: |
+          docker compose -f tests/docker-compose.yaml --project-directory tests up --build --abort-on-container-exit --exit-code-from test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run linter (containerized)
+        run: |
+          docker run --rm -v "$PWD":/workspace -w /workspace python:3.11-slim bash autolint.sh
+
+  release:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed to fetch all tags
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Get FastAPI version from code
+        id: get_version
+        run: |
+          VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); import server; print(server.app.version)")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get latest git tag
+        id: get_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "0.0.0")
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Compare version and tag
+        id: compare
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          TAG="${{ steps.get_tag.outputs.tag }}"
+          echo "Code version: $VERSION"
+          echo "Latest tag: $TAG"
+          # Compare semver
+          if [ "$VERSION" = "$TAG" ]; then
+            # Nightly build
+            DATE=$(date +'%Y%m%d-%H%M')
+            NIGHTLY_TAG="${VERSION}-nightly-${DATE}"
+            echo "nightly_tag=$NIGHTLY_TAG" >> $GITHUB_OUTPUT
+            echo "release_tag=" >> $GITHUB_OUTPUT
+          else
+            # Check if version is greater than tag
+            if python -c "import sys; from packaging.version import parse as V; sys.exit(0 if V('$VERSION') > V('$TAG') else 1)"; then
+              echo "release_tag=$VERSION" >> $GITHUB_OUTPUT
+              echo "nightly_tag=" >> $GITHUB_OUTPUT
+            else
+              echo "ERROR: Version in code ($VERSION) is not greater than latest tag ($TAG)."
+              exit 1
+            fi
+          fi
+
+      - name: Tag commit if new release
+        if: steps.compare.outputs.release_tag != ''
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag ${{ steps.compare.outputs.release_tag }}
+          git push origin ${{ steps.compare.outputs.release_tag }}
+
+      - name: Set Docker tag
+        id: docker_tag
+        run: |
+          if [ -n "${{ steps.compare.outputs.release_tag }}" ]; then
+            echo "tag=${{ steps.compare.outputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ steps.compare.outputs.nightly_tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }} .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }}
