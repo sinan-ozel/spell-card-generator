@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "tests",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f", "${workspaceFolder}/tests/docker-compose.yaml",
+        "--project-directory", "${workspaceFolder}/tests",
+        "up",
+        "--build",
+        "--abort-on-container-exit",
+        "--exit-code-from", "test"
+      ],
+      "problemMatcher": [],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "generate card from environmental variables in /docker-compose.yaml",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
+        "up",
+        "--build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": "build"
+    },
+    {
+      "label": "lint (flake8, containerized)",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-u", "${env:UID}:${env:GID}",
+        "-v", "${workspaceFolder}:/code",
+        "-w", "/code/src",
+        "python:3.11-slim",
+        "bash",
+        "../autolint.sh"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}
+
+
