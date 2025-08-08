@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile  # uses Dockerfile in project root
+    ports:
+      - "8000:8000"
+    volumes:
+      - ../cards:/app/cards
+    networks:
+      - spell-card-test
+    command: ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys,urllib.request; sys.exit(urllib.request.urlopen('http://localhost:8000/docs').status!=200)"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile  # test container
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      - BASE_URL=http://app:8000
+    networks:
+      - spell-card-test
+    command: ["pytest", "test_server.py"]
+
+
+networks:
+  spell-card-test:
+    driver: bridge

@@ -1,15 +1,18 @@
 import os
+from importlib import import_module
 
 from spell import Spell
 
 GENERATOR = os.environ.get("GENERATOR", "plain")
 VALID_GENERATORS = [
-    'plain',
+    "plain",
 ]
 if GENERATOR not in VALID_GENERATORS:
-    raise ValueError(f"GENERATOR is {GENERATOR}, but expecting one of: {VALID_GENERATORS}")
+    raise ValueError(
+        f"GENERATOR is {GENERATOR}, but expecting one of: {VALID_GENERATORS}"
+    )
 
-from importlib import import_module
+
 generate = getattr(import_module(GENERATOR), "generate")
 
 
