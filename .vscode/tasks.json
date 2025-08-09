@@ -38,19 +38,25 @@
     {
       "label": "lint (flake8, containerized)",
       "type": "shell",
-      "command": "docker",
+      "command": "bash",
       "args": [
-        "run",
-        "--rm",
-        "-u", "${env:UID}:${env:GID}",
-        "-v", "${workspaceFolder}:/code",
-        "-w", "/code/src",
-        "python:3.11-slim",
-        "bash",
-        "../autolint.sh"
+        "-c",
+        "docker run --rm -u $(id -u):$(id -g) -e HOME=/tmp -v ${workspaceFolder}:/code -w /code/src python:3.11-slim bash ../autolint.sh"
       ],
       "problemMatcher": [],
       "group": "test"
+    },
+    {
+      "label": "run server",
+      "type": "shell",
+      "dependsOn": [],
+      "command": "sh",
+      "args": [
+        "-c",
+        "docker build -t spell-card-server . && docker run --rm -p 8000:8000 -v ./cards:/app/cards spell-card-server"
+      ],
+      "problemMatcher": [],
+      "group": "build"
     }
   ]
 }
