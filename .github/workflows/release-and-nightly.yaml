@@ -113,3 +113,7 @@ jobs:
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }} .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }}
+          if [ -n "${{ steps.compare.outputs.release_tag }}" ]; then
+            docker tag ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }} ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:latest
+            docker push ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:latest
+          fi
