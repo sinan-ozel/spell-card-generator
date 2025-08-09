@@ -1,5 +1,7 @@
 import logging
 import re
+import os
+from importlib import import_module
 from typing import Optional
 
 import requests
@@ -7,8 +9,13 @@ from fastapi import BackgroundTasks, FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 
-from plain import generate
+from main import VALID_GENERATORS
 from spell import Spell
+
+generators = {}
+for generator in VALID_GENERATORS:
+    generators[generator] = getattr(import_module(f"generators.{generator}"), "generate")
+    # TODO: Catch fails, start server, turn back an error message if missing.
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -16,7 +23,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.1.1",
+    version="0.2.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -80,6 +87,12 @@ class SpellRequest(BaseModel):
         description="Optional callback URL to notify when the card is ready",
         example="http://localhost:9999/callback"
     )
+    generator: str = Field(
+        default="plain",
+        description="Name of the generator to use."
+                    f" Available generators: {', '.join(VALID_GENERATORS)}",
+        example="plain"
+    )
 
 
 def notify_callback(callback_url: str, payload: dict):
@@ -138,16 +151,21 @@ async def create_spell_card(request: SpellRequest,
     spell = Spell(**request.spell_data.dict())
     background_tasks.add_task(generate_and_notify,
                               spell,
+                              request.generator,
                               request.callback_url)
     return {"status": "queued", "title": spell.title}
 
 
-def generate_and_notify(spell: Spell, callback_url: Optional[str]):
+def generate_and_notify(spell: Spell,
+                        generator: str='plain',
+                        callback_url: str | None=None):
     title_normalized = re.sub(r'\s+', ' ', spell.title.strip())
     safe_title = title_normalized.replace(":", "").replace(" ", "-")
     filename = f"L{spell.level}.{safe_title}.jpg".lower()
-    filepath = f"cards/{filename}"
-    image = generate(spell)
+    output_dir = f"cards/{generator}"
+    os.makedirs(output_dir, exist_ok=True)
+    filepath = f"{output_dir}/{filename}"
+    image = generators[generator](spell)
     image.save(filepath)
     payload = {
         "status": "ready",
@@ -158,3 +176,9 @@ def generate_and_notify(spell: Spell, callback_url: Optional[str]):
     }
     if callback_url:
         notify_callback(callback_url, payload)
+
+
+@app.get("/v1/generators", response_model=dict)
+def get_generators():
+    """Get available card generators."""
+    return {name: "available" for name in VALID_GENERATORS}

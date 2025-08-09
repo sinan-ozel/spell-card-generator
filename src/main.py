@@ -13,7 +13,7 @@ if GENERATOR not in VALID_GENERATORS:
     )
 
 
-generate = getattr(import_module(GENERATOR), "generate")
+generate = getattr(import_module(f"generators.{GENERATOR}"), "generate")
 
 
 if __name__ == "__main__":
