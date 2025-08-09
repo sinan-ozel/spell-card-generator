@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run linter (containerized)
         run: |
-          docker run --rm -v "$PWD":/workspace -w /workspace python:3.11-slim bash autolint.sh
+          docker run --rm -e HOME=/tmp -v "$PWD":/workspace -w /workspace python:3.11-slim bash autolint.sh
 
   release:
     needs: [test, lint]
