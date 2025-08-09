@@ -1,6 +1,6 @@
 import logging
-import re
 import os
+import re
 from importlib import import_module
 from typing import Optional
 
@@ -14,7 +14,8 @@ from spell import Spell
 
 generators = {}
 for generator in VALID_GENERATORS:
-    generators[generator] = getattr(import_module(f"generators.{generator}"), "generate")
+    generators[generator] = getattr(import_module(f"generators.{generator}"),
+                                    "generate")
     # TODO: Catch fails, start server, turn back an error message if missing.
 
 logging.basicConfig(level=logging.INFO)
@@ -157,8 +158,8 @@ async def create_spell_card(request: SpellRequest,
 
 
 def generate_and_notify(spell: Spell,
-                        generator: str='plain',
-                        callback_url: str | None=None):
+                        generator: str = 'plain',
+                        callback_url: str | None = None):
     title_normalized = re.sub(r'\s+', ' ', spell.title.strip())
     safe_title = title_normalized.replace(":", "").replace(" ", "-")
     filename = f"L{spell.level}.{safe_title}.jpg".lower()
