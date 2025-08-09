@@ -99,7 +99,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Check if /src, /fonts, or /template changed
+        id: check_docker_changes
+        run: |
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -E '^(src/|fonts/|template/)' > /dev/null; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and push Docker image
+        if: steps.check_docker_changes.outputs.changed == 'true'
         run: |
           docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }} .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/spell-card-generator:${{ steps.docker_tag.outputs.tag }}
