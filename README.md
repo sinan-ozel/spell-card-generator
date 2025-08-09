@@ -1,3 +1,5 @@
+[![Release & Nightly](https://github.com/sinan-ozel/spell-card-generator/actions/workflows/release-and-nightly.yaml/badge.svg)](https://github.com/sinan-ozel/spell-card-generator/actions/workflows/release-and-nightly.yaml)
+
 # Spell Card Generator
 
 A FastAPI-based API for generating Dungeons & Dragons spell cards as images.
@@ -71,6 +73,17 @@ If `callback_url` is provided, a POST request will be sent to it when the card i
   "level": 0,
   "filename": "L0.Acid-Splash.jpg",
   "url": "/cards/plain/L0.Acid-Splash.jpg"
+}
+```
+
+### 4. **Get available generators**
+
+#### **GET /v1/generators**
+
+Response:
+```json
+{
+  "plain": "available"
 }
 ```
 
