@@ -61,14 +61,12 @@ def generate(spell: Spell) -> Image:
     center_text(
         draw, spell.casting_time, font_label, y=85, image_width=width / 2 + 16
     )
-    center_text(
-        draw,
-        spell.range,
-        font_label,
-        y=85,
-        image_width=width / 2,
-        x_offset=width / 2 - 8,
-    )
+    center_text(draw,
+                spell.range,
+                font_label,
+                y=85,
+                image_width=width / 2,
+                x_offset=width / 2 - 8)
     center_text(
         draw, spell.components, font_label, y=130, image_width=width / 2 + 16
     )

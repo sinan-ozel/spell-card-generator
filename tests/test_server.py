@@ -16,7 +16,7 @@ CALLBACK_URL = f"http://test:{CALLBACK_PORT}{CALLBACK_PATH}"
 spell_data = {
     "title": "Acid Splash",
     "casting_time": "1 action",
-    "spell_range": "60 feet",
+    "range": "60 feet",
     "components": "V, S",
     "duration": "Instantaneous",
     "description": "You hurl a bubble of acid...",

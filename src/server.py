@@ -1,11 +1,11 @@
+import logging
 import re
 from typing import Optional
-import logging
 
 import requests
 from fastapi import BackgroundTasks, FastAPI
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 
 from plain import generate
 from spell import Spell
@@ -25,13 +25,13 @@ app = FastAPI(
 app.mount("/cards", StaticFiles(directory="cards"), name="cards")
 
 
-from pydantic import Field
-
 class SpellData(BaseModel):
-    """Represents the details of a Dungeons & Dragons spell for card generation."""
+    """Represents the details of a Dungeons & Dragons spell for card
+    generation."""
     title: str = Field(
         ...,
-        description=f"Name of the spell. Max {Spell.MAX_TITLE_CHARS} characters",
+        description=f"Name of the spell. "
+                    f"Max {Spell.MAX_TITLE_CHARS} characters",
         example="Acid Splash"
     )
     casting_time: str = Field(
@@ -39,7 +39,7 @@ class SpellData(BaseModel):
         description="Time required to cast the spell.",
         example="1 action"
     )
-    spell_range: str = Field(
+    range: str = Field(
         ...,
         description="Effective range of the spell.",
         example="60 feet"
@@ -67,7 +67,8 @@ class SpellData(BaseModel):
     )
     level: int = Field(
         ...,
-        description="Spell level, must be between 0 (cantrip) and 9 (highest).",
+        description="Spell level, must be between 0 (cantrip) & 9 (highest).",
+        example=0,
     )
 
 
@@ -123,26 +124,28 @@ def notify_callback(callback_url: str, payload: dict):
 )
 async def create_spell_card(request: SpellRequest,
                             background_tasks: BackgroundTasks):
-    """
-    Queue a spell card for generation.
+    """Queue a spell card for generation.
 
-    Accepts spell details and an optional callback URL. The spell card is generated
-    asynchronously in the background. If a callback URL is provided, a POST request
-    will be sent to that URL with the card's status and download information once
-    generation is complete.
+    Accepts spell details and an optional callback URL. The spell card is
+    generated asynchronously in the background. If a callback URL is provided,
+    a POST request will be sent to that URL with the card's status and
+    download information once generation is complete.
 
     Returns:
-        dict: Status and spell title indicating the card generation has been queued.
+        dict: Status and spell title indicating the card generation has been
+        queued.
     """
     spell = Spell(**request.spell_data.dict())
-    background_tasks.add_task(generate_and_notify, spell, request.callback_url)
+    background_tasks.add_task(generate_and_notify,
+                              spell,
+                              request.callback_url)
     return {"status": "queued", "title": spell.title}
 
 
 def generate_and_notify(spell: Spell, callback_url: Optional[str]):
     title_normalized = re.sub(r'\s+', ' ', spell.title.strip())
     safe_title = title_normalized.replace(":", "").replace(" ", "-")
-    filename = f"L{spell.level}.{safe_title}.jpg"
+    filename = f"L{spell.level}.{safe_title}.jpg".lower()
     filepath = f"cards/{filename}"
     image = generate(spell)
     image.save(filepath)

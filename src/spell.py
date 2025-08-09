@@ -26,7 +26,7 @@ class Spell:
         self,
         title: str,
         casting_time: str,
-        spell_range: str,
+        range: str,
         components: str,
         duration: str,
         description: str,
@@ -51,7 +51,7 @@ class Spell:
         # TODO: Add a character limit check to casting time.
         self.casting_time = casting_time
         # TODO: Add a character limit check to spell range
-        self.range = spell_range
+        self.range = range
         if not self.is_valid_components(components):
             raise ValueError(
                 "Components can only be: V, S, M, "

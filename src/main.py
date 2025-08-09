@@ -33,4 +33,3 @@ if __name__ == "__main__":
 
     filename = f"cards/L{spell.level}.{spell.title}.jpg"
     image.save(filename)
-
