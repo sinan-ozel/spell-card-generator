@@ -1,6 +1,6 @@
 [![Release & Nightly](https://github.com/sinan-ozel/spell-card-generator/actions/workflows/release-and-nightly.yaml/badge.svg)](https://github.com/sinan-ozel/spell-card-generator/actions/workflows/release-and-nightly.yaml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/sinanozel/spell-card-generator)[https://hub.docker.com/r/sinan-ozel/spell-card-generator]]
-[![Docker Image Size](https://img.shields.io/docker/image-size/sinanozel/spell-card-generator)[https://hub.docker.com/r/sinan-ozel/spell-card-generator]]
+[![Docker Pulls][https://img.shields.io/docker/pulls/sinanozel/spell-card-generator](https://hub.docker.com/r/sinan-ozel/spell-card-generator)]
+[![Docker Image Size][https://img.shields.io/docker/image-size/sinanozel/spell-card-generator](https://hub.docker.com/r/sinan-ozel/spell-card-generator)]
 
 
 
