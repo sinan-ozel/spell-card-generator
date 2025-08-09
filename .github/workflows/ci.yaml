@@ -25,4 +25,4 @@ jobs:
 
       - name: Run linter (containerized)
         run: |
-          docker run --rm -e HOME=/tmp -v "$PWD":/workspace -w /workspace python:3.11-slim bash autolint.sh
+          docker run --rm -e HOME=/tmp -v "$PWD":/code -w /code/src python:3.11-slim bash ../autolint.sh
