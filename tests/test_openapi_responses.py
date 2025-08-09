@@ -65,7 +65,7 @@ def test_openapi_200_responses(method, path, example):
     Automatically checks that all documented endpoints with a 200 response
     in the OpenAPI spec actually return a 200 status code.
     """
-    assert example, f"No example found for {method} {path}"
+    assert example, f"No example found for {method.upper()} {path}"
     url = f"{BASE_URL}{path}"
     if method == "get":
         resp = requests.get(url)
@@ -77,4 +77,6 @@ def test_openapi_200_responses(method, path, example):
     assert resp.status_code == 200, (
         f"Endpoint {method.upper()} {url} did not return 200. "
         f"Returned {resp.status_code}. Response: {resp.text}"
+
+# TODO: Add another test where we remove one of the keys from the example, and assert 400 or 422.
     )

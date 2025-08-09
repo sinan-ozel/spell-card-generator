@@ -1,8 +1,10 @@
 #!/bin/bash
 set -e
 
+export PATH="/tmp/.local/bin:$PATH"
+
 echo "🐍 Installing linters and formatters"
-pip install --quiet flake8 isort autoflake autopep8 docformatter
+pip install --user --quiet flake8 isort autoflake autopep8 docformatter
 
 echo "🧹🗑️  Removing unused imports with autoflake..."
 autoflake --in-place --remove-unused-variables --remove-all-unused-imports -r .
