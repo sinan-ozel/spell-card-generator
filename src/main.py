@@ -6,6 +6,7 @@ from spell import Spell
 GENERATOR = os.environ.get("GENERATOR", "plain")
 VALID_GENERATORS = [
     "plain",
+    "tornioduva",
 ]
 if GENERATOR not in VALID_GENERATORS:
     raise ValueError(

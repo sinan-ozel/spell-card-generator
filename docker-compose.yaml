@@ -5,6 +5,7 @@ services:
     build: .
     command: python main.py
     environment:
+      GENERATOR: tornioduva
       SPELL_NAME: "Acid Splash"
       CASTING_TIME: "Action"
       RANGE: "60 feet"

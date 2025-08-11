@@ -26,6 +26,13 @@ spell_data = {
 callback_result = {}
 
 
+def get_valid_generators():
+    r = requests.get(f"{BASE_URL}/v1/generators")
+    r.raise_for_status()
+    # The endpoint returns a list of dicts with "generator" as a key
+    return [g["generator"] for g in r.json()]
+
+
 class CallbackHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == CALLBACK_PATH:
@@ -45,19 +52,24 @@ def run_callback_server():
     httpd.handle_request()  # handle one request, then exit
 
 
-def test_card_creation_without_callback():
-    """Test card creation without a callback URL."""
-    payload = {"spell_data": spell_data}
+@pytest.mark.depends(on=["test_generators_endpoint"])
+@pytest.mark.parametrize("generator", get_valid_generators())
+def test_card_creation_without_callback(generator):
+    """Test card creation without a callback URL for all generators."""
+    payload = {"spell_data": spell_data, "generator": generator}
     r = requests.post(f"{BASE_URL}/v1/generate", json=payload)
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "queued"
 
 
-def test_card_creation_with_callback():
-    """Test card creation with a callback URL."""
+@pytest.mark.depends(on=["test_generators_endpoint"])
+@pytest.mark.parametrize("generator", get_valid_generators())
+def test_card_creation_with_callback(generator):
+    """Test card creation with a callback URL for all generators."""
     payload = {
         "spell_data": spell_data,
         "callback_url": "http://localhost:9999/does-not-matter",
+        "generator": generator
     }
     r = requests.post(f"{BASE_URL}/v1/generate", json=payload)
     assert r.status_code == 200, r.text
@@ -109,3 +121,16 @@ def test_callback_and_download_card():
     card_resp = requests.get(card_url)
     assert card_resp.status_code == 200
     assert card_resp.headers.get("content-type", "").startswith("image/")
+
+
+def test_generators_endpoint():
+    """Test that the /v1/generators endpoint returns the correct structure and content."""
+    r = requests.get(f"{BASE_URL}/v1/generators")
+    assert r.status_code == 200, f"/v1/generators not available: {r.status_code}"
+    data = r.json()
+    assert isinstance(data, list), "Response should be a list"
+    for entry in data:
+        assert "generator" in entry, "Each entry should have a 'generator' key"
+        assert "status" in entry, "Each entry should have a 'status' key"
+        assert "information" in entry, "Each entry should have an 'information' key"
+        assert isinstance(entry["information"], list), "'information' should be a list of strings"

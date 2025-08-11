@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from importlib import import_module
-from typing import Optional
+from typing import Dict, List, Optional
 
 import requests
 from fastapi import BackgroundTasks, FastAPI
@@ -179,7 +179,20 @@ def generate_and_notify(spell: Spell,
         notify_callback(callback_url, payload)
 
 
-@app.get("/v1/generators", response_model=dict)
+@app.get("/v1/generators", response_model=List[Dict[str, object]])
 def get_generators():
-    """Get available card generators."""
-    return {name: "available" for name in VALID_GENERATORS}
+    """Get available card generators with status and module docstring."""
+    result = []
+    for name in VALID_GENERATORS:
+        try:
+            mod = import_module(f"generators.{name}")
+            doc = mod.__doc__ or ""
+            info = [line.strip() for line in doc.splitlines() if line.strip()]
+        except Exception:
+            info = []
+        result.append({
+            "generator": name,
+            "status": "available",
+            "information": info
+        })
+    return result
