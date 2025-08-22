@@ -38,6 +38,14 @@ on:
         description: "Spell level (number)"
         required: true
         default: "0"
+      GENERATOR:
+        description: "Card generator style"
+        required: true
+        default: "plain"
+        type: choice
+        options:
+          - plain
+          - torniodva
 
 permissions:
   contents: write
@@ -70,6 +78,7 @@ jobs:
             -e DESCRIPTION="${{ inputs.DESCRIPTION }}" \
             -e SCHOOL="${{ inputs.SCHOOL }}" \
             -e LEVEL="${{ inputs.LEVEL }}" \
+            -e GENERATOR="${{ inputs.GENERATOR }}" \
             -v ${{ github.workspace }}/template:/app/template \
             -v ${{ github.workspace }}/cards:/app/cards \
             spell_card_filler \
