@@ -81,9 +81,6 @@ jobs:
           name: spell-card
           path: cards/
 
-      - name: Set up GitHub CLI
-        uses: actions/setup-gh@v4
-
       - name: Prepare branch name from spell title
         id: branchname
         run: |
@@ -103,15 +100,3 @@ jobs:
           git add cards/*.jpg -f
           git commit -m "Add card for ${{ inputs.SPELL_NAME }}" || echo "No changes to commit"
           git push origin "${{ steps.branchname.outputs.branch }}"
-
-      - name: Create pull request
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh pr create \
-            --title "Add card for ${{ inputs.SPELL_NAME }}" \
-            --body "Automated card generation for ${{ inputs.SPELL_NAME }}." \
-            --base main \
-            --head "${{ steps.branchname.outputs.branch }}" \
-            --repo ${{ github.repository }} \
-            --label "auto-generated"
