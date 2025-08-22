@@ -82,7 +82,7 @@ jobs:
           path: cards/
 
       - name: Set up GitHub CLI
-        uses: cli/cli-action@v2
+        uses: actions/setup-gh@v4
 
       - name: Prepare branch name from spell title
         id: branchname
