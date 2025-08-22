@@ -81,13 +81,37 @@ jobs:
           name: spell-card
           path: cards/
 
-      - name: Commit PDF back to repo
+      - name: Set up GitHub CLI
+        uses: cli/cli-action@v2
+
+      - name: Prepare branch name from spell title
+        id: branchname
+        run: |
+          # Convert SPELL_NAME to lowercase and replace spaces with dashes
+          branch="add-card/$(echo "${{ inputs.SPELL_NAME }}" | tr '[:upper:]' '[:lower:]' | sed 's/ /-/g')"
+          echo "branch=$branch" >> $GITHUB_OUTPUT
+
+      - name: Commit and push card to new branch
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch
-          git checkout main
+          git fetch origin
+          git checkout -b "${{ steps.branchname.outputs.branch }}"
           mkdir -p cards
           git add cards/*.jpg -f
-          git commit -m "Anwe " || echo "No changes to commit"
-          git push origin main
+          git commit -m "Add card for ${{ inputs.SPELL_NAME }}" || echo "No changes to commit"
+          git push origin "${{ steps.branchname.outputs.branch }}"
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --title "Add card for ${{ inputs.SPELL_NAME }}" \
+            --body "Automated card generation for ${{ inputs.SPELL_NAME }}." \
+            --base main \
+            --head "${{ steps.branchname.outputs.branch }}" \
+            --repo ${{ github.repository }} \
+            --label "auto-generated"
