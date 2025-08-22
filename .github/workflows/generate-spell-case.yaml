@@ -72,7 +72,8 @@ jobs:
             -e LEVEL="${{ inputs.LEVEL }}" \
             -v ${{ github.workspace }}/template:/app/template \
             -v ${{ github.workspace }}/cards:/app/cards \
-            spell_card_filler
+            spell_card_filler \
+            python main.py
 
       - name: Upload spell card output
         uses: actions/upload-artifact@v4
