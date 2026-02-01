@@ -19,14 +19,14 @@ def test_mcp_list_tools():
             "id": "test-1"
         }
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["jsonrpc"] == "2.0"
     assert "result" in data
     assert "tools" in data["result"]
     assert len(data["result"]["tools"]) > 0
-    
+
     # Check that generate_spell_card_stream tool exists
     tool_names = [tool["name"] for tool in data["result"]["tools"]]
     assert "generate_spell_card_stream" in tool_names
@@ -42,7 +42,7 @@ def test_mcp_invalid_method():
             "id": "test-2"
         }
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["jsonrpc"] == "2.0"
@@ -58,7 +58,7 @@ def test_mcp_invalid_json():
         data=b"{invalid json}",
         headers={"Content-Type": "application/json"}
     )
-    
+
     # FastAPI returns 422 for invalid JSON when using Pydantic models
     assert response.status_code == 422
 
@@ -75,7 +75,7 @@ def test_mcp_generate_spell_card_stream():
         "school": "Evocation",
         "level": 1
     }
-    
+
     response = requests.post(
         f"{BASE_URL}/mcp",
         json={
@@ -89,10 +89,10 @@ def test_mcp_generate_spell_card_stream():
         },
         stream=True
     )
-    
+
     assert response.status_code == 200
     assert "text/event-stream" in response.headers["content-type"]
-    
+
     events = []
     for line in response.iter_lines():
         if line:
@@ -104,32 +104,32 @@ def test_mcp_generate_spell_card_stream():
                     events.append(event)
                 except json.JSONDecodeError:
                     pass
-    
+
     # Verify we received events
     assert len(events) > 0
-    
+
     # Check that events have proper JSON-RPC structure
     for event in events:
         assert "jsonrpc" in event
         assert event["jsonrpc"] == "2.0"
         assert "method" in event or "error" in event
-        
+
     # Check for progress events
-    progress_events = [e for e in events 
+    progress_events = [e for e in events
                       if e.get("method") == "tool.progress"]
     assert len(progress_events) > 0
-    
+
     # Check that we have progress values
-    progress_values = [e["params"].get("progress") 
-                      for e in progress_events 
+    progress_values = [e["params"].get("progress")
+                      for e in progress_events
                       if "progress" in e["params"]]
     assert len(progress_values) > 0
-    
+
     # Final event should have completed status
-    final_events = [e for e in progress_events 
+    final_events = [e for e in progress_events
                    if e["params"].get("status") == "completed"]
     assert len(final_events) > 0
-    
+
     # Final event should contain card data
     final_event = final_events[0]
     assert "card" in final_event["params"]
@@ -149,7 +149,7 @@ def test_mcp_generate_with_tornioduva():
         "school": "Evocation",
         "level": 3
     }
-    
+
     response = requests.post(
         f"{BASE_URL}/mcp",
         json={
@@ -163,9 +163,9 @@ def test_mcp_generate_with_tornioduva():
         },
         stream=True
     )
-    
+
     assert response.status_code == 200
-    
+
     events = []
     for line in response.iter_lines():
         if line:
@@ -177,12 +177,12 @@ def test_mcp_generate_with_tornioduva():
                     events.append(event)
                 except json.JSONDecodeError:
                     pass
-    
+
     assert len(events) > 0
-    
+
     # Check for completed status
     completed = any(
-        e.get("method") == "tool.progress" and 
+        e.get("method") == "tool.progress" and
         e.get("params", {}).get("status") == "completed"
         for e in events
     )
@@ -201,7 +201,7 @@ def test_mcp_invalid_generator():
         "school": "Evocation",
         "level": 0
     }
-    
+
     response = requests.post(
         f"{BASE_URL}/mcp",
         json={
@@ -214,7 +214,7 @@ def test_mcp_invalid_generator():
             "id": "test-5"
         }
     )
-    
+
     assert response.status_code == 200
     data = response.json()
     assert "error" in data
@@ -230,7 +230,7 @@ def test_mcp_invalid_spell_data():
         "casting_time": "1 action"
         # Missing other required fields
     }
-    
+
     response = requests.post(
         f"{BASE_URL}/mcp",
         json={
@@ -244,10 +244,10 @@ def test_mcp_invalid_spell_data():
         },
         stream=True
     )
-    
+
     # Should still connect but error will be in stream
     assert response.status_code == 200
-    
+
     events = []
     for line in response.iter_lines():
         if line:
@@ -259,11 +259,11 @@ def test_mcp_invalid_spell_data():
                     events.append(event)
                 except json.JSONDecodeError:
                     pass
-    
+
     # Should have error events
-    error_events = [e for e in events 
-                   if "error" in e or 
-                   (e.get("method") == "tool.progress" and 
+    error_events = [e for e in events
+                   if "error" in e or
+                   (e.get("method") == "tool.progress" and
                     e.get("params", {}).get("status") == "error")]
     assert len(error_events) > 0
 
@@ -280,7 +280,7 @@ def test_mcp_default_generator():
         "school": "Transmutation",
         "level": 0
     }
-    
+
     response = requests.post(
         f"{BASE_URL}/mcp",
         json={
@@ -294,9 +294,9 @@ def test_mcp_default_generator():
         },
         stream=True
     )
-    
+
     assert response.status_code == 200
-    
+
     events = []
     for line in response.iter_lines():
         if line:
@@ -308,10 +308,10 @@ def test_mcp_default_generator():
                     events.append(event)
                 except json.JSONDecodeError:
                     pass
-    
+
     # Should successfully generate with default generator
     completed = any(
-        e.get("method") == "tool.progress" and 
+        e.get("method") == "tool.progress" and
         e.get("params", {}).get("status") == "completed"
         for e in events
     )

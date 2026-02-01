@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.3.0",
+    version="0.4.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -255,10 +255,10 @@ def get_generators():
 )
 async def mcp_endpoint(mcp_request: MCPRequest):
     """MCP JSON-RPC endpoint with SSE streaming support.
-    
+
     Accepts JSON-RPC requests and streams progress updates via SSE.
     Supports the 'generate_spell_card_stream' tool and 'list_tools' method.
-    
+
     Example JSON-RPC request for listing tools:
     ```json
     {
@@ -267,7 +267,7 @@ async def mcp_endpoint(mcp_request: MCPRequest):
         "id": "1"
     }
     ```
-    
+
     Example JSON-RPC request for streaming generation:
     ```json
     {
@@ -293,11 +293,11 @@ async def mcp_endpoint(mcp_request: MCPRequest):
     method = mcp_request.method
     params = mcp_request.params or {}
     request_id = mcp_request.id
-    
+
     # Map MCP tool names to generators
     if method == "generate_spell_card_stream":
         generator_name = params.get("generator", "plain")
-        
+
         if generator_name not in VALID_GENERATORS:
             return {
                 "jsonrpc": "2.0",
@@ -308,15 +308,15 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                 },
                 "id": request_id
             }
-        
+
         # Return SSE stream
         async def event_generator():
             """Generate Server-Sent Events for streaming progress."""
             import json
-            
+
             try:
                 generator_fn = stream_generators[generator_name]
-                
+
                 # Stream progress events
                 async for event in generator_fn(params, None):
                     data = {
@@ -326,7 +326,7 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                         "id": request_id
                     }
                     yield {"data": json.dumps(data)}
-                    
+
             except Exception as e:
                 logger.error(f"Error in MCP stream: {e}", exc_info=True)
                 error_data = {
@@ -338,9 +338,9 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                     "id": request_id
                 }
                 yield {"data": json.dumps(error_data)}
-        
+
         return EventSourceResponse(event_generator())
-    
+
     elif method == "list_tools":
         # Return available MCP tools
         tools = [{
@@ -367,7 +367,7 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                             "school": {"type": "string"},
                             "level": {"type": "integer", "minimum": 0, "maximum": 9}
                         },
-                        "required": ["title", "casting_time", "range", "components", 
+                        "required": ["title", "casting_time", "range", "components",
                                    "duration", "description", "school", "level"]
                     }
                 },
@@ -379,7 +379,7 @@ async def mcp_endpoint(mcp_request: MCPRequest):
             "result": {"tools": tools},
             "id": request_id
         }
-    
+
     else:
         return {
             "jsonrpc": "2.0",
