@@ -4,6 +4,8 @@ import json
 import os
 import pytest
 import requests
+from concurrent.futures import ThreadPoolExecutor
+from typing import List, Dict, Any
 
 
 BASE_URL = os.getenv("BASE_URL", "http://app:8000")
@@ -304,6 +306,527 @@ def test_mcp_default_generator():
         for e in events
     )
     assert completed
+
+
+## ============================================================================
+## MCP CONTRACT COMPLIANCE TESTS
+## ============================================================================
+
+
+def test_mcp_id_correlation_in_streaming():
+    """Test that all streamed events preserve request ID correlation."""
+    request_id = "test-id-correlation-123"
+    spell_data = {
+        "title": "ID Test",
+        "casting_time": "1 action",
+        "range": "30 feet",
+        "components": "V",
+        "duration": "Instantaneous",
+        "description": "Test for ID correlation.",
+        "school": "Divination",
+        "level": 0
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": request_id
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+    events = parse_stream_events(response)
+
+    # Notifications should NOT have id field
+    notifications = [e for e in events if "method" in e]
+    for notif in notifications:
+        assert "id" not in notif, \
+            f"Notification {notif.get('method')} must not have 'id' field"
+
+    # Final response frame (if any) should match request ID
+    responses = [e for e in events if "result" in e or ("error" in e and "method" not in e)]
+    for resp in responses:
+        if "id" in resp:
+            assert resp["id"] == request_id, \
+                f"Response ID {resp['id']} must match request ID {request_id}"
+
+
+def validate_json_schema(schema: Dict[str, Any]) -> List[str]:
+    """Validate that a schema follows JSON Schema spec. Returns list of errors."""
+    errors = []
+
+    if not isinstance(schema, dict):
+        errors.append("Schema must be an object")
+        return errors
+
+    if "type" not in schema:
+        errors.append("Schema must have 'type' field")
+
+    if schema.get("type") == "object":
+        if "properties" not in schema:
+            errors.append("Object schema should have 'properties'")
+
+    return errors
+
+
+def test_mcp_tool_schema_validity():
+    """Test that tool schemas are valid MCP tool descriptors."""
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "list_tools",
+            "id": "test-schema"
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    tools = data["result"]["tools"]
+
+    # Find our main tool
+    tool = next((t for t in tools if t["name"] == "generate_spell_card_stream"), None)
+    assert tool is not None, "generate_spell_card_stream tool not found"
+
+    # Validate tool structure
+    assert "name" in tool
+    assert "description" in tool
+    assert "inputSchema" in tool
+
+    # Validate inputSchema is proper JSON Schema
+    schema = tool["inputSchema"]
+    assert isinstance(schema, dict), "inputSchema must be an object"
+    assert schema.get("type") == "object", "inputSchema type must be 'object'"
+    assert "properties" in schema, "inputSchema must have 'properties'"
+
+    # Validate specific properties exist
+    props = schema["properties"]
+    assert "generator" in props, "Schema must define 'generator' property"
+    assert "spell_data" in props, "Schema must define 'spell_data' property"
+
+    # Validate no schema errors
+    errors = validate_json_schema(schema)
+    assert len(errors) == 0, f"Schema validation errors: {errors}"
+
+
+def test_mcp_error_object_structure():
+    """Test that MCP errors follow proper JSON-RPC error structure."""
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "nonexistent_method",
+            "id": "test-error-structure"
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Must have error field
+    assert "error" in data, "Error response must have 'error' field"
+
+    err = data["error"]
+
+    # Validate error structure
+    assert isinstance(err, dict), "error must be an object"
+    assert "code" in err, "error must have 'code' field"
+    assert "message" in err, "error must have 'message' field"
+
+    # Validate types
+    assert isinstance(err["code"], int), "error.code must be integer"
+    assert isinstance(err["message"], str), "error.message must be string"
+
+    # If data field exists, must be object
+    if "data" in err:
+        assert isinstance(err["data"], dict), "error.data must be object if present"
+
+
+def test_mcp_streaming_notification_vs_response():
+    """Test that streaming properly distinguishes notifications from responses."""
+    spell_data = {
+        "title": "Protocol Test",
+        "casting_time": "1 action",
+        "range": "Self",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "description": "Test notification vs response.",
+        "school": "Divination",
+        "level": 0
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": "test-notif-vs-resp"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+    events = parse_stream_events(response)
+    assert len(events) > 0
+
+    # All progress events must be notifications (have 'method', no 'id')
+    for event in events:
+        if event.get("method") == "tool.progress":
+            assert "method" in event, "Progress event must have 'method' field"
+            assert "id" not in event, "Notifications must NOT have 'id' field"
+            assert "params" in event, "Notifications must have 'params' field"
+
+        # If it's a response (has result or error without method), it should have id
+        if "result" in event or ("error" in event and "method" not in event):
+            # Response frames may have id
+            pass  # This is acceptable
+
+
+def test_mcp_content_type_strict():
+    """Test that Content-Type headers are correct for streaming."""
+    spell_data = {
+        "title": "Content-Type Test",
+        "casting_time": "1 action",
+        "range": "Touch",
+        "components": "V",
+        "duration": "1 round",
+        "description": "Testing content type.",
+        "school": "Abjuration",
+        "level": 0
+    }
+
+    # Streaming endpoint should return text/event-stream
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": "test-content-type"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+    ctype = response.headers.get("content-type", "").lower()
+
+    # For streaming responses, should be text/event-stream or application/json for streamable
+    assert "text/event-stream" in ctype or "application/json" in ctype, \
+        f"Streaming response should have SSE or JSON content-type, got: {ctype}"
+
+
+def test_mcp_concurrent_requests():
+    """Test that server handles parallel MCP tool calls safely."""
+    def make_request(request_id: str) -> requests.Response:
+        """Make a single MCP request."""
+        spell_data = {
+            "title": f"Concurrent Spell {request_id}",
+            "casting_time": "1 action",
+            "range": "60 feet",
+            "components": "V, S",
+            "duration": "Instantaneous",
+            "description": f"Concurrent test spell {request_id}.",
+            "school": "Evocation",
+            "level": 1
+        }
+
+        return requests.post(
+            f"{BASE_URL}/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "method": "generate_spell_card_stream",
+                "params": {
+                    "generator": "plain",
+                    "spell_data": spell_data
+                },
+                "id": request_id
+            },
+            stream=True
+        )
+
+    # Execute 5 parallel requests
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        request_ids = [f"concurrent-{i}" for i in range(5)]
+        responses = list(executor.map(make_request, request_ids))
+
+    # All should succeed
+    for response in responses:
+        assert response.status_code == 200
+        events = parse_stream_events(response)
+        assert len(events) > 0
+
+        # Should have at least one progress event
+        progress_events = [e for e in events if e.get("method") == "tool.progress"]
+        assert len(progress_events) > 0
+
+
+def test_mcp_metadata_passthrough():
+    """Test that metadata in requests doesn't break execution."""
+    spell_data = {
+        "title": "Metadata Test",
+        "casting_time": "1 action",
+        "range": "Self",
+        "components": "V",
+        "duration": "1 minute",
+        "description": "Test metadata handling.",
+        "school": "Transmutation",
+        "level": 0
+    }
+
+    # Include metadata in request
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data,
+                "_meta": {
+                    "clientId": "test-client",
+                    "sessionId": "test-session-123"
+                }
+            },
+            "id": "test-metadata"
+        },
+        stream=True
+    )
+
+    # Should not break - metadata should be ignored gracefully
+    assert response.status_code == 200
+    events = parse_stream_events(response)
+
+    # Should complete successfully despite metadata
+    completed = any(
+        e.get("method") == "tool.progress" and
+        e.get("params", {}).get("status") == "completed"
+        for e in events
+    )
+    assert completed, "Request with metadata should complete successfully"
+
+
+def test_mcp_transport_framing_strict():
+    """Test that SSE transport framing is strictly correct."""
+    spell_data = {
+        "title": "Framing Test",
+        "casting_time": "1 action",
+        "range": "30 feet",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "description": "Test SSE framing.",
+        "school": "Illusion",
+        "level": 1
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": "test-framing"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+
+    # Parse with strict validation
+    valid_events = 0
+    for line in response.iter_lines():
+        if not line:
+            continue
+
+        line = line.decode('utf-8') if isinstance(line, bytes) else line
+        line = line.strip()
+
+        # Skip SSE comments
+        if line.startswith(":"):
+            continue
+
+        # Extract payload
+        if line.startswith("data: "):
+            payload = line[6:]
+        elif line.startswith("{"):
+            payload = line
+        else:
+            continue
+
+        # Every data line must be valid JSON
+        try:
+            event = json.loads(payload)
+
+            # Must be valid JSON-RPC
+            assert "jsonrpc" in event, f"Frame missing jsonrpc: {payload}"
+            assert event["jsonrpc"] == "2.0", f"Invalid jsonrpc version: {event['jsonrpc']}"
+
+            valid_events += 1
+        except json.JSONDecodeError as e:
+            pytest.fail(f"Invalid JSON in stream: {payload}\nError: {e}")
+
+    # Must have received at least some events
+    assert valid_events > 0, "No valid events received"
+
+
+def test_mcp_error_codes_compliance():
+    """Test that error codes follow JSON-RPC spec."""
+    test_cases = [
+        {
+            "request": {
+                "jsonrpc": "2.0",
+                "method": "nonexistent",
+                "id": "1"
+            },
+            "expected_code": -32601,  # Method not found
+            "description": "Method not found"
+        },
+        {
+            "request": "invalid json",
+            "expected_code": -32700,  # Parse error
+            "description": "Parse error"
+        },
+        {
+            "request": {
+                "jsonrpc": "2.0",
+                "method": "generate_spell_card_stream",
+                "params": {
+                    "generator": "invalid_gen",
+                    "spell_data": {
+                        "title": "Test",
+                        "casting_time": "1 action",
+                        "range": "30 feet",
+                        "components": "V",
+                        "duration": "Instantaneous",
+                        "description": "Test",
+                        "school": "Evocation",
+                        "level": 0
+                    }
+                },
+                "id": "3"
+            },
+            "expected_code": -32602,  # Invalid params
+            "description": "Invalid params"
+        }
+    ]
+
+    for test_case in test_cases:
+        if isinstance(test_case["request"], str):
+            # Send invalid JSON
+            response = requests.post(
+                f"{BASE_URL}/mcp",
+                data=test_case["request"].encode(),
+                headers={"Content-Type": "application/json"}
+            )
+        else:
+            response = requests.post(
+                f"{BASE_URL}/mcp",
+                json=test_case["request"]
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "error" in data, f"{test_case['description']}: Missing error field"
+        assert data["error"]["code"] == test_case["expected_code"], \
+            f"{test_case['description']}: Expected code {test_case['expected_code']}, got {data['error']['code']}"
+
+
+def test_mcp_list_tools_response_structure():
+    """Test that list_tools response follows MCP spec structure."""
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "list_tools",
+            "id": "test-list-tools-structure"
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    # Validate response structure
+    assert data["jsonrpc"] == "2.0"
+    assert "result" in data
+    assert "id" in data
+
+    result = data["result"]
+    assert "tools" in result
+    assert isinstance(result["tools"], list)
+
+    # Each tool must have required fields
+    for tool in result["tools"]:
+        assert "name" in tool, "Tool must have 'name'"
+        assert "description" in tool, "Tool must have 'description'"
+        assert "inputSchema" in tool, "Tool must have 'inputSchema'"
+
+        assert isinstance(tool["name"], str)
+        assert isinstance(tool["description"], str)
+        assert isinstance(tool["inputSchema"], dict)
+
+
+def test_mcp_progress_event_structure():
+    """Test that tool.progress events follow proper structure."""
+    spell_data = {
+        "title": "Progress Structure Test",
+        "casting_time": "1 action",
+        "range": "60 feet",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "description": "Testing progress event structure.",
+        "school": "Divination",
+        "level": 0
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": "test-progress-structure"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+    events = parse_stream_events(response)
+
+    progress_events = [e for e in events if e.get("method") == "tool.progress"]
+    assert len(progress_events) > 0, "Must have at least one progress event"
+
+    for event in progress_events:
+        # Validate notification structure
+        assert event["jsonrpc"] == "2.0"
+        assert event["method"] == "tool.progress"
+        assert "params" in event
+        assert "id" not in event  # Notifications must not have id
+
+        params = event["params"]
+        # Progress events should have meaningful params
+        assert isinstance(params, dict)
+        # Should have at least status or progress
+        assert "status" in params or "progress" in params
 
 
 if __name__ == "__main__":

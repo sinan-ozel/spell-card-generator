@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import os
 import re
@@ -5,13 +7,11 @@ from importlib import import_module
 from typing import Dict, List, Optional
 
 import requests
-import asyncio
-import json
 from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 from sse_starlette.sse import EventSourceResponse
-from fastapi.responses import StreamingResponse
 
 from main import VALID_GENERATORS
 from spell import Spell
@@ -349,7 +349,11 @@ async def mcp_endpoint(request: Request):
     try:
         body = await request.json()
     except Exception:
-        return {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None}
+        return {
+            "jsonrpc": "2.0",
+            "error": {"code": -32700, "message": "Parse error"},
+            "id": None
+        }
 
     method = body.get("method") if body else None
     params = body.get("params") or {}
@@ -359,11 +363,23 @@ async def mcp_endpoint(request: Request):
     if method in ("generate_spell_card_stream", "tools/call"):
         # tools/call params may include the tool name under various keys
         if method == "tools/call":
-            # common shapes: {"tool": "generate_spell_card_stream", "input": {...}}
-            tool = params.get("tool") or params.get("name") or (params.get("toolName") if isinstance(params, dict) else None)
-            tool_params = params.get("input") or params.get("params") or params.get("arguments") or {}
+            # common shapes:
+            # {"tool": "generate_spell_card_stream", "input": {...}}
+            tool = (
+                params.get("tool")
+                or params.get("name")
+                or (params.get("toolName")
+                    if isinstance(params, dict) else None)
+            )
+            tool_params = (
+                params.get("input")
+                or params.get("params")
+                or params.get("arguments")
+                or {}
+            )
             # If tool is not specified, try to infer
-            generator_name = tool_params.get("generator") if isinstance(tool_params, dict) else None
+            generator_name = tool_params.get(
+                "generator") if isinstance(tool_params, dict) else None
             if not generator_name and isinstance(tool, str):
                 generator_name = tool
             if not generator_name:
@@ -394,15 +410,15 @@ async def mcp_endpoint(request: Request):
         async def broadcast_generator():
             try:
                 async for event in generator_fn(params, None):
+                    # Progress notifications must NOT have 'id' field
                     data = {
                         "jsonrpc": "2.0",
                         "method": "tool.progress",
                         "params": event,
-                        "id": request_id,
                     }
                     for q in list(connections):
                         await q.put(data)
-                # final result notification
+                # final result response (has 'id', no 'method')
                 result = {
                     "jsonrpc": "2.0",
                     "result": {"status": "completed"},
@@ -425,32 +441,52 @@ async def mcp_endpoint(request: Request):
 
         if connections:
             asyncio.create_task(broadcast_generator())
-            # Acknowledge POST immediately; actual JSON-RPC response will be sent on the SSE stream
-            ack = {"jsonrpc": "2.0", "id": request_id, "result": {"status": "accepted"}}
+            # Acknowledge POST immediately; actual JSON-RPC response
+            # will be sent on the SSE stream
+            ack = {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {"status": "accepted"}
+            }
             for q in list(connections):
                 await q.put(ack)
             return ack
 
-        # fallback: return a JSON-RPC streaming response bound to this POST caller
+        # fallback: return a JSON-RPC streaming response
+        # bound to this POST caller
         async def stream_generator():
             try:
                 async for event in generator_fn(params, None):
+                    # Progress notifications must NOT have 'id' field
                     data = {
                         "jsonrpc": "2.0",
                         "method": "tool.progress",
                         "params": event,
-                        "id": request_id,
                     }
                     yield json.dumps(data) + "\n"
-                # final result
-                result = {"jsonrpc": "2.0", "id": request_id, "result": {"status": "completed"}}
+                # final result response (has 'id', no 'method')
+                result = {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {"status": "completed"}
+                }
                 yield json.dumps(result) + "\n"
             except Exception as e:
                 logger.error(f"Error in MCP stream: {e}", exc_info=True)
-                error_data = {"jsonrpc": "2.0", "error": {"code": -32603, "message": f"Internal error: {str(e)}"}, "id": request_id}
+                error_data = {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {str(e)}"
+                    },
+                    "id": request_id
+                }
                 yield json.dumps(error_data) + "\n"
 
-        return StreamingResponse(stream_generator(), media_type="application/json")
+        return StreamingResponse(
+            stream_generator(),
+            media_type="application/json"
+        )
 
     elif method in ("list_tools", "tools/list"):
         # Return available MCP tools
@@ -496,7 +532,11 @@ async def mcp_endpoint(request: Request):
                 "required": ["spell_data"]
             }
         }]
-        response = {"jsonrpc": "2.0", "result": {"tools": tools}, "id": request_id}
+        response = {
+            "jsonrpc": "2.0",
+            "result": {"tools": tools},
+            "id": request_id
+        }
         for q in list(connections):
             await q.put(response)
         return response
@@ -505,15 +545,27 @@ async def mcp_endpoint(request: Request):
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
-            "serverInfo": {"name": app.title or "spell-card-server", "version": app.version or "0.1.0"},
+            "serverInfo": {
+                "name": app.title or "spell-card-server",
+                "version": app.version or "0.1.0"
+            },
         }
-        resp = {"jsonrpc": "2.0", "id": request_id, "result": result}
+        resp = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": result
+        }
         for q in list(connections):
             await q.put(resp)
         return resp
 
     else:
-        resp = {"jsonrpc": "2.0", "error": {"code": -32601, "message": f"Method not found: {method}"}, "id": request_id}
+        resp = {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": f"Method not found: {method}"},
+            "id": request_id}
         for q in list(connections):
             await q.put(resp)
         return resp
