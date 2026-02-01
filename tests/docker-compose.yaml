@@ -26,6 +26,7 @@ services:
       - BASE_URL=http://app:8000
     networks:
       - spell-card-test
+    command: ["pytest", "--openapi=http://app:8000", "--openapi-no-strict-example-checking"]
 
 
 networks:

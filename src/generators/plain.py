@@ -42,7 +42,8 @@ def level_text(level: int) -> str:
         raise ValueError(f"Allowed spell levels: {list(range(10))}")
 
 
-# TODO: Change the generate function to be a wrapper around generate_stream, to avoid code duplication.
+# TODO: Change the generate function to be a wrapper around
+# generate_stream, to avoid code duplication.
 def generate(spell: Spell) -> Image:
     image = Image.open("template/0.jpg").convert("RGB")
     draw = ImageDraw.Draw(image)
@@ -145,8 +146,8 @@ async def generate_stream(params: dict, progress_callback):
         await asyncio.sleep(0.01)
 
         # Convert to base64 for transport
-        import io
         import base64
+        import io
         buffer = io.BytesIO()
         image.save(buffer, format='JPEG')
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')

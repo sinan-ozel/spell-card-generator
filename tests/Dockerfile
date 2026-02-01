@@ -6,6 +6,7 @@ WORKDIR /tests
 RUN pip install --no-cache-dir pytest
 RUN pip install --no-cache-dir pytest-depends
 RUN pip install --no-cache-dir requests
+RUN pip install --no-cache-dir pytest-openapi
 
 # Copy tests and optionally source code if needed for imports
 COPY test_*.py .

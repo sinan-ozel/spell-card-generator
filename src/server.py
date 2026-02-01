@@ -5,7 +5,7 @@ from importlib import import_module
 from typing import Dict, List, Optional
 
 import requests
-from fastapi import BackgroundTasks, FastAPI, Request
+from fastapi import BackgroundTasks, FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 from sse_starlette.sse import EventSourceResponse
@@ -112,7 +112,9 @@ class MCPRequest(BaseModel):
     )
     method: str = Field(
         ...,
-        description="Method to call (list_tools or generate_spell_card_stream)",
+        description=(
+            "Method to call (list_tools or generate_spell_card_stream)"
+        ),
         example="list_tools"
     )
     params: Optional[Dict] = Field(
@@ -210,7 +212,36 @@ def generate_and_notify(spell: Spell,
         notify_callback(callback_url, payload)
 
 
-@app.get("/v1/generators", response_model=List[Dict[str, object]])
+@app.get(
+    "/v1/generators",
+    response_model=List[Dict[str, object]],
+    responses={
+        200: {
+            "description": "List of available generators with their status.",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "generator": "plain",
+                            "status": "available",
+                            "information": [
+                                "Simple spell card generator.",
+                                "Plain text style.",
+                            ]
+                        },
+                        {
+                            "generator": "tornioduva",
+                            "status": "available",
+                            "information": [
+                                "Fantasy-themed spell card generator."
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    }
+)
 def get_generators():
     """Get available card generators with status and module docstring."""
     result = []
@@ -242,7 +273,10 @@ def get_generators():
                             "tools": [
                                 {
                                     "name": "generate_spell_card_stream",
-                                    "description": "Generate D&D spell cards with streaming progress updates"
+                                    "description": (
+                                        "Generate D&D spell cards with "
+                                        "streaming progress updates"
+                                    )
                                 }
                             ]
                         },
@@ -304,7 +338,7 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                 "error": {
                     "code": -32602,
                     "message": f"Invalid generator: {generator_name}. "
-                              f"Valid options: {', '.join(VALID_GENERATORS)}"
+                    f"Valid options: {', '.join(VALID_GENERATORS)}"
                 },
                 "id": request_id
             }
@@ -345,13 +379,18 @@ async def mcp_endpoint(mcp_request: MCPRequest):
         # Return available MCP tools
         tools = [{
             "name": "generate_spell_card_stream",
-            "description": "Generate D&D spell cards with streaming progress updates",
+            "description": (
+                "Generate D&D spell cards with streaming progress updates"
+            ),
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "generator": {
                         "type": "string",
-                        "description": f"Card generator to use. Options: {', '.join(VALID_GENERATORS)}",
+                        "description": (
+                            f"Card generator to use. Options: "
+                            f"{', '.join(VALID_GENERATORS)}"
+                        ),
                         "default": "plain"
                     },
                     "spell_data": {
@@ -365,10 +404,16 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                             "duration": {"type": "string"},
                             "description": {"type": "string"},
                             "school": {"type": "string"},
-                            "level": {"type": "integer", "minimum": 0, "maximum": 9}
+                            "level": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9
+                            }
                         },
-                        "required": ["title", "casting_time", "range", "components",
-                                   "duration", "description", "school", "level"]
+                        "required": [
+                            "title", "casting_time", "range", "components",
+                            "duration", "description", "school", "level"
+                        ]
                     }
                 },
                 "required": ["spell_data"]

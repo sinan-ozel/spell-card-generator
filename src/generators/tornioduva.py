@@ -42,7 +42,8 @@ def level_text(level: int) -> str:
         raise ValueError(f"Allowed spell levels: {list(range(10))}")
 
 
-# TODO: Change the generate function to be a wrapper around generate_stream, to avoid code duplication.
+# TODO: Change the generate function to be a wrapper around
+# generate_stream, to avoid code duplication.
 def generate(spell: Spell) -> Image:
     image = Image.open("template/tornio-duva/item-card.png").convert("RGB")
     draw = ImageDraw.Draw(image)
@@ -125,7 +126,10 @@ async def generate_stream(params: dict, progress_callback):
         spell_data = params.get('spell_data', {})
 
         # Send initial progress
-        yield {"progress": 5, "message": "Initializing TornioDuva card generation"}
+        yield {
+            "progress": 5,
+            "message": "Initializing TornioDuva card generation"
+        }
         await asyncio.sleep(0.01)  # Allow event to be sent
 
         # Create Spell object
@@ -156,8 +160,8 @@ async def generate_stream(params: dict, progress_callback):
         await asyncio.sleep(0.01)
 
         # Convert to base64 for transport
-        import io
         import base64
+        import io
         buffer = io.BytesIO()
         image.save(buffer, format='JPEG')
         image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
