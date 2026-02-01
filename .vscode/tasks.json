@@ -57,6 +57,25 @@
       ],
       "problemMatcher": [],
       "group": "build"
+    },
+    {
+      "label": "run server with MCP inspector",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f", "${workspaceFolder}/mcp/docker-compose.yaml",
+        "--project-directory", "${workspaceFolder}/mcp",
+        "up",
+        "--build"
+      ],
+      "problemMatcher": [],
+      "isBackground": true,
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
     }
   ]
 }
