@@ -28,6 +28,9 @@ for generator in VALID_GENERATORS:
     )
     # TODO: Catch fails, start server, turn back an error message if missing.
 
+# Active SSE connections (each is an asyncio.Queue)
+connections = set()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
