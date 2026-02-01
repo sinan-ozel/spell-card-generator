@@ -9,6 +9,31 @@ import requests
 BASE_URL = os.getenv("BASE_URL", "http://app:8000")
 
 
+def parse_stream_events(response):
+    """Parse events from either SSE (`data: ...`) or newline-delimited JSON."""
+    events = []
+    for line in response.iter_lines():
+        if not line:
+            continue
+        line = line.decode('utf-8') if isinstance(line, bytes) else line
+        line = line.strip()
+        # skip SSE comments/keepalives
+        if line.startswith(":"):
+            continue
+        payload = None
+        if line.startswith("data: "):
+            payload = line[6:]
+        elif line.startswith("{") or line.startswith("["):
+            payload = line
+        if not payload:
+            continue
+        try:
+            events.append(json.loads(payload))
+        except json.JSONDecodeError:
+            continue
+    return events
+
+
 def test_mcp_list_tools():
     """Test that list_tools returns available MCP tools."""
     response = requests.post(
@@ -59,8 +84,12 @@ def test_mcp_invalid_json():
         headers={"Content-Type": "application/json"}
     )
 
-    # FastAPI returns 422 for invalid JSON when using Pydantic models
-    assert response.status_code == 422
+    # Our MCP endpoint returns a JSON-RPC parse error frame
+    assert response.status_code == 200
+    data = response.json()
+    assert data.get("jsonrpc") == "2.0"
+    assert "error" in data
+    assert data["error"]["code"] == -32700
 
 
 def test_mcp_generate_spell_card_stream():
@@ -91,19 +120,11 @@ def test_mcp_generate_spell_card_stream():
     )
 
     assert response.status_code == 200
-    assert "text/event-stream" in response.headers["content-type"]
+    # Content-type may be SSE or newline-delimited JSON for Streamable HTTP
+    ctype = response.headers.get("content-type", "")
+    assert "text/event-stream" in ctype or "application/json" in ctype
 
-    events = []
-    for line in response.iter_lines():
-        if line:
-            line = line.decode('utf-8') if isinstance(line, bytes) else line
-            if line.startswith("data: "):
-                event_data = line[6:]  # Remove "data: " prefix
-                try:
-                    event = json.loads(event_data)
-                    events.append(event)
-                except json.JSONDecodeError:
-                    pass
+    events = parse_stream_events(response)
 
     # Verify we received events
     assert len(events) > 0
@@ -112,7 +133,7 @@ def test_mcp_generate_spell_card_stream():
     for event in events:
         assert "jsonrpc" in event
         assert event["jsonrpc"] == "2.0"
-        assert "method" in event or "error" in event
+        assert "method" in event or "error" in event or "result" in event
 
     # Check for progress events
     progress_events = [e for e in events
@@ -166,18 +187,7 @@ def test_mcp_generate_with_tornioduva():
 
     assert response.status_code == 200
 
-    events = []
-    for line in response.iter_lines():
-        if line:
-            line = line.decode('utf-8') if isinstance(line, bytes) else line
-            if line.startswith("data: "):
-                event_data = line[6:]
-                try:
-                    event = json.loads(event_data)
-                    events.append(event)
-                except json.JSONDecodeError:
-                    pass
-
+    events = parse_stream_events(response)
     assert len(events) > 0
 
     # Check for completed status
@@ -248,18 +258,7 @@ def test_mcp_invalid_spell_data():
     # Should still connect but error will be in stream
     assert response.status_code == 200
 
-    events = []
-    for line in response.iter_lines():
-        if line:
-            line = line.decode('utf-8') if isinstance(line, bytes) else line
-            if line.startswith("data: "):
-                event_data = line[6:]
-                try:
-                    event = json.loads(event_data)
-                    events.append(event)
-                except json.JSONDecodeError:
-                    pass
-
+    events = parse_stream_events(response)
     # Should have error events
     error_events = [e for e in events
                    if "error" in e or
@@ -297,18 +296,7 @@ def test_mcp_default_generator():
 
     assert response.status_code == 200
 
-    events = []
-    for line in response.iter_lines():
-        if line:
-            line = line.decode('utf-8') if isinstance(line, bytes) else line
-            if line.startswith("data: "):
-                event_data = line[6:]
-                try:
-                    event = json.loads(event_data)
-                    events.append(event)
-                except json.JSONDecodeError:
-                    pass
-
+    events = parse_stream_events(response)
     # Should successfully generate with default generator
     completed = any(
         e.get("method") == "tool.progress" and

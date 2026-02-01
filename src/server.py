@@ -5,10 +5,13 @@ from importlib import import_module
 from typing import Dict, List, Optional
 
 import requests
-from fastapi import BackgroundTasks, FastAPI
+import asyncio
+import json
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
 from sse_starlette.sse import EventSourceResponse
+from fastapi.responses import StreamingResponse
 
 from main import VALID_GENERATORS
 from spell import Spell
@@ -260,6 +263,22 @@ def get_generators():
     return result
 
 
+@app.get("/mcp")
+async def mcp_stream(request: Request):
+    async def event_generator():
+        queue = asyncio.Queue()
+        connections.add(queue)
+
+        try:
+            while True:
+                msg = await queue.get()
+                yield {"data": json.dumps(msg)}
+        except asyncio.CancelledError:
+            connections.remove(queue)
+
+    return EventSourceResponse(event_generator())
+
+
 @app.post(
     "/mcp",
     responses={
@@ -287,7 +306,7 @@ def get_generators():
         }
     }
 )
-async def mcp_endpoint(mcp_request: MCPRequest):
+async def mcp_endpoint(request: Request):
     """MCP JSON-RPC endpoint with SSE streaming support.
 
     Accepts JSON-RPC requests and streams progress updates via SSE.
@@ -324,58 +343,113 @@ async def mcp_endpoint(mcp_request: MCPRequest):
     }
     ```
     """
-    method = mcp_request.method
-    params = mcp_request.params or {}
-    request_id = mcp_request.id
+    try:
+        body = await request.json()
+    except Exception:
+        return {"jsonrpc": "2.0", "error": {"code": -32700, "message": "Parse error"}, "id": None}
 
-    # Map MCP tool names to generators
-    if method == "generate_spell_card_stream":
-        generator_name = params.get("generator", "plain")
+    method = body.get("method") if body else None
+    params = body.get("params") or {}
+    request_id = body.get("id")
+
+    # Map MCP tool names to generators and MCP session methods
+    if method in ("generate_spell_card_stream", "tools/call"):
+        # tools/call params may include the tool name under various keys
+        if method == "tools/call":
+            # common shapes: {"tool": "generate_spell_card_stream", "input": {...}}
+            tool = params.get("tool") or params.get("name") or (params.get("toolName") if isinstance(params, dict) else None)
+            tool_params = params.get("input") or params.get("params") or params.get("arguments") or {}
+            # If tool is not specified, try to infer
+            generator_name = tool_params.get("generator") if isinstance(tool_params, dict) else None
+            if not generator_name and isinstance(tool, str):
+                generator_name = tool
+            if not generator_name:
+                generator_name = tool or "plain"
+            params = tool_params or {}
+        else:
+            generator_name = params.get("generator", "plain")
 
         if generator_name not in VALID_GENERATORS:
-            return {
+            resp = {
                 "jsonrpc": "2.0",
                 "error": {
                     "code": -32602,
                     "message": f"Invalid generator: {generator_name}. "
                     f"Valid options: {', '.join(VALID_GENERATORS)}"
                 },
-                "id": request_id
+                "id": request_id,
             }
+            for q in list(connections):
+                await q.put(resp)
+            return resp
 
-        # Return SSE stream
-        async def event_generator():
-            """Generate Server-Sent Events for streaming progress."""
-            import json
+        # If an Inspector (SSE client) is connected, broadcast to it and
+        # return immediately. Otherwise keep the original behavior of
+        # returning an EventSourceResponse bound to this POST request.
+        generator_fn = stream_generators[generator_name]
 
+        async def broadcast_generator():
             try:
-                generator_fn = stream_generators[generator_name]
-
-                # Stream progress events
                 async for event in generator_fn(params, None):
                     data = {
                         "jsonrpc": "2.0",
                         "method": "tool.progress",
                         "params": event,
-                        "id": request_id
+                        "id": request_id,
                     }
-                    yield {"data": json.dumps(data)}
-
+                    for q in list(connections):
+                        await q.put(data)
+                # final result notification
+                result = {
+                    "jsonrpc": "2.0",
+                    "result": {"status": "completed"},
+                    "id": request_id,
+                }
+                for q in list(connections):
+                    await q.put(result)
             except Exception as e:
                 logger.error(f"Error in MCP stream: {e}", exc_info=True)
                 error_data = {
                     "jsonrpc": "2.0",
                     "error": {
                         "code": -32603,
-                        "message": f"Internal error: {str(e)}"
+                        "message": f"Internal error: {str(e)}",
                     },
-                    "id": request_id
+                    "id": request_id,
                 }
-                yield {"data": json.dumps(error_data)}
+                for q in list(connections):
+                    await q.put(error_data)
 
-        return EventSourceResponse(event_generator())
+        if connections:
+            asyncio.create_task(broadcast_generator())
+            # Acknowledge POST immediately; actual JSON-RPC response will be sent on the SSE stream
+            ack = {"jsonrpc": "2.0", "id": request_id, "result": {"status": "accepted"}}
+            for q in list(connections):
+                await q.put(ack)
+            return ack
 
-    elif method == "list_tools":
+        # fallback: return a JSON-RPC streaming response bound to this POST caller
+        async def stream_generator():
+            try:
+                async for event in generator_fn(params, None):
+                    data = {
+                        "jsonrpc": "2.0",
+                        "method": "tool.progress",
+                        "params": event,
+                        "id": request_id,
+                    }
+                    yield json.dumps(data) + "\n"
+                # final result
+                result = {"jsonrpc": "2.0", "id": request_id, "result": {"status": "completed"}}
+                yield json.dumps(result) + "\n"
+            except Exception as e:
+                logger.error(f"Error in MCP stream: {e}", exc_info=True)
+                error_data = {"jsonrpc": "2.0", "error": {"code": -32603, "message": f"Internal error: {str(e)}"}, "id": request_id}
+                yield json.dumps(error_data) + "\n"
+
+        return StreamingResponse(stream_generator(), media_type="application/json")
+
+    elif method in ("list_tools", "tools/list"):
         # Return available MCP tools
         tools = [{
             "name": "generate_spell_card_stream",
@@ -419,18 +493,24 @@ async def mcp_endpoint(mcp_request: MCPRequest):
                 "required": ["spell_data"]
             }
         }]
-        return {
-            "jsonrpc": "2.0",
-            "result": {"tools": tools},
-            "id": request_id
+        response = {"jsonrpc": "2.0", "result": {"tools": tools}, "id": request_id}
+        for q in list(connections):
+            await q.put(response)
+        return response
+
+    elif method == "initialize":
+        result = {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"tools": {}},
+            "serverInfo": {"name": app.title or "spell-card-server", "version": app.version or "0.1.0"},
         }
+        resp = {"jsonrpc": "2.0", "id": request_id, "result": result}
+        for q in list(connections):
+            await q.put(resp)
+        return resp
 
     else:
-        return {
-            "jsonrpc": "2.0",
-            "error": {
-                "code": -32601,
-                "message": f"Method not found: {method}"
-            },
-            "id": request_id
-        }
+        resp = {"jsonrpc": "2.0", "error": {"code": -32601, "message": f"Method not found: {method}"}, "id": request_id}
+        for q in list(connections):
+            await q.put(resp)
+        return resp
