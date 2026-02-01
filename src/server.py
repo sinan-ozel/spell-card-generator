@@ -5,17 +5,24 @@ from importlib import import_module
 from typing import Dict, List, Optional
 
 import requests
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl
+from sse_starlette.sse import EventSourceResponse
 
 from main import VALID_GENERATORS
 from spell import Spell
 
 generators = {}
+stream_generators = {}
 for generator in VALID_GENERATORS:
     generators[generator] = getattr(import_module(f"generators.{generator}"),
                                     "generate")
+    # Load streaming generators for MCP
+    stream_generators[generator] = getattr(
+        import_module(f"generators.{generator}"),
+        "generate_stream"
+    )
     # TODO: Catch fails, start server, turn back an error message if missing.
 
 logging.basicConfig(level=logging.INFO)
@@ -93,6 +100,30 @@ class SpellRequest(BaseModel):
         description="Name of the generator to use."
                     f" Available generators: {', '.join(VALID_GENERATORS)}",
         example="plain"
+    )
+
+
+class MCPRequest(BaseModel):
+    """MCP JSON-RPC request."""
+    jsonrpc: str = Field(
+        default="2.0",
+        description="JSON-RPC version",
+        example="2.0"
+    )
+    method: str = Field(
+        ...,
+        description="Method to call (list_tools or generate_spell_card_stream)",
+        example="list_tools"
+    )
+    params: Optional[Dict] = Field(
+        default=None,
+        description="Parameters for the method",
+        example={}
+    )
+    id: Optional[str] = Field(
+        default=None,
+        description="Request ID",
+        example="1"
     )
 
 
@@ -196,3 +227,165 @@ def get_generators():
             "information": info
         })
     return result
+
+
+@app.post(
+    "/mcp",
+    responses={
+        200: {
+            "description": "MCP JSON-RPC response or SSE stream",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "tools": [
+                                {
+                                    "name": "generate_spell_card_stream",
+                                    "description": "Generate D&D spell cards with streaming progress updates"
+                                }
+                            ]
+                        },
+                        "id": "1"
+                    }
+                }
+            }
+        }
+    }
+)
+async def mcp_endpoint(mcp_request: MCPRequest):
+    """MCP JSON-RPC endpoint with SSE streaming support.
+    
+    Accepts JSON-RPC requests and streams progress updates via SSE.
+    Supports the 'generate_spell_card_stream' tool and 'list_tools' method.
+    
+    Example JSON-RPC request for listing tools:
+    ```json
+    {
+        "jsonrpc": "2.0",
+        "method": "list_tools",
+        "id": "1"
+    }
+    ```
+    
+    Example JSON-RPC request for streaming generation:
+    ```json
+    {
+        "jsonrpc": "2.0",
+        "method": "generate_spell_card_stream",
+        "params": {
+            "generator": "plain",
+            "spell_data": {
+                "title": "Fireball",
+                "casting_time": "1 action",
+                "range": "150 feet",
+                "components": "V, S, M",
+                "duration": "Instantaneous",
+                "description": "A bright streak flashes...",
+                "school": "Evocation",
+                "level": 3
+            }
+        },
+        "id": "2"
+    }
+    ```
+    """
+    method = mcp_request.method
+    params = mcp_request.params or {}
+    request_id = mcp_request.id
+    
+    # Map MCP tool names to generators
+    if method == "generate_spell_card_stream":
+        generator_name = params.get("generator", "plain")
+        
+        if generator_name not in VALID_GENERATORS:
+            return {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32602,
+                    "message": f"Invalid generator: {generator_name}. "
+                              f"Valid options: {', '.join(VALID_GENERATORS)}"
+                },
+                "id": request_id
+            }
+        
+        # Return SSE stream
+        async def event_generator():
+            """Generate Server-Sent Events for streaming progress."""
+            import json
+            
+            try:
+                generator_fn = stream_generators[generator_name]
+                
+                # Stream progress events
+                async for event in generator_fn(params, None):
+                    data = {
+                        "jsonrpc": "2.0",
+                        "method": "tool.progress",
+                        "params": event,
+                        "id": request_id
+                    }
+                    yield {"data": json.dumps(data)}
+                    
+            except Exception as e:
+                logger.error(f"Error in MCP stream: {e}", exc_info=True)
+                error_data = {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32603,
+                        "message": f"Internal error: {str(e)}"
+                    },
+                    "id": request_id
+                }
+                yield {"data": json.dumps(error_data)}
+        
+        return EventSourceResponse(event_generator())
+    
+    elif method == "list_tools":
+        # Return available MCP tools
+        tools = [{
+            "name": "generate_spell_card_stream",
+            "description": "Generate D&D spell cards with streaming progress updates",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "generator": {
+                        "type": "string",
+                        "description": f"Card generator to use. Options: {', '.join(VALID_GENERATORS)}",
+                        "default": "plain"
+                    },
+                    "spell_data": {
+                        "type": "object",
+                        "description": "Spell details",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "casting_time": {"type": "string"},
+                            "range": {"type": "string"},
+                            "components": {"type": "string"},
+                            "duration": {"type": "string"},
+                            "description": {"type": "string"},
+                            "school": {"type": "string"},
+                            "level": {"type": "integer", "minimum": 0, "maximum": 9}
+                        },
+                        "required": ["title", "casting_time", "range", "components", 
+                                   "duration", "description", "school", "level"]
+                    }
+                },
+                "required": ["spell_data"]
+            }
+        }]
+        return {
+            "jsonrpc": "2.0",
+            "result": {"tools": tools},
+            "id": request_id
+        }
+    
+    else:
+        return {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32601,
+                "message": f"Method not found: {method}"
+            },
+            "id": request_id
+        }

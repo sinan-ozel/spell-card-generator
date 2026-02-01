@@ -3,6 +3,7 @@
 I lost the source of the card. If you created the background, please let me
 know, I would love to give you credit, or take this down, if you so wish.
 """
+import asyncio
 import textwrap
 
 from PIL import Image, ImageDraw, ImageFont
@@ -41,6 +42,7 @@ def level_text(level: int) -> str:
         raise ValueError(f"Allowed spell levels: {list(range(10))}")
 
 
+# TODO: Change the generate function to be a wrapper around generate_stream, to avoid code duplication.
 def generate(spell: Spell) -> Image:
     image = Image.open("template/0.jpg").convert("RGB")
     draw = ImageDraw.Draw(image)
@@ -101,3 +103,71 @@ def generate(spell: Spell) -> Image:
     )
 
     return image
+
+
+async def generate_stream(params: dict, progress_callback):
+    """MCP-compatible streaming generator for spell cards.
+
+    Args:
+        params: Dict with 'spell_data' containing spell attributes
+        progress_callback: Async function to report progress
+
+    Yields:
+        Progress events and final result
+    """
+    try:
+        # Extract spell data
+        spell_data = params.get('spell_data', {})
+
+        # Send initial progress
+        yield {"progress": 10, "message": "Initializing card generation"}
+        await asyncio.sleep(0.01)  # Allow event to be sent
+
+        # Create Spell object
+        spell = Spell(
+            title=spell_data.get('title', ''),
+            casting_time=spell_data.get('casting_time', ''),
+            range=spell_data.get('range', ''),
+            components=spell_data.get('components', ''),
+            duration=spell_data.get('duration', ''),
+            description=spell_data.get('description', ''),
+            school=spell_data.get('school', ''),
+            level=spell_data.get('level', 0)
+        )
+
+        yield {"progress": 30, "message": "Loading template and fonts"}
+        await asyncio.sleep(0.01)
+
+        # Generate the image using existing logic
+        image = generate(spell)
+
+        yield {"progress": 80, "message": "Rendering card"}
+        await asyncio.sleep(0.01)
+
+        # Convert to base64 for transport
+        import io
+        import base64
+        buffer = io.BytesIO()
+        image.save(buffer, format='JPEG')
+        image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        # Send final result
+        yield {
+            "progress": 100,
+            "message": "Card generation complete",
+            "status": "completed",
+            "card": {
+                "title": spell.title,
+                "level": spell.level,
+                "image_data": image_base64,
+                "format": "jpeg"
+            }
+        }
+
+    except Exception as e:
+        yield {
+            "progress": -1,
+            "message": f"Error: {str(e)}",
+            "status": "error",
+            "error": str(e)
+        }
