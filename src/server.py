@@ -535,7 +535,11 @@ async def mcp_endpoint(request: Request):
                                 "description": (
                                     "The name printed at the top of the card"
                                 ),
-                                "examples": ["Fireball", "Cure Wounds", "Shield"]
+                                "examples": [
+                                    "Fireball",
+                                    "Cure Wounds",
+                                    "Shield"
+                                ]
                             },
                             "casting_time": {
                                 "type": "string",
@@ -570,7 +574,7 @@ async def mcp_endpoint(request: Request):
                                 ),
                                 "examples": [
                                     "V, S",
-                                    "V, S, M (a tiny ball of bat guano and sulfur)",
+                                    "V, S, M (bat guano and sulfur)",
                                     "S, M (a sprig of mistletoe)"
                                 ]
                             },
@@ -613,7 +617,11 @@ async def mcp_endpoint(request: Request):
                                     "Necromancy",
                                     "Transmutation"
                                 ],
-                                "examples": ["Evocation", "Abjuration", "Conjuration"]
+                                "examples": [
+                                    "Evocation",
+                                    "Abjuration",
+                                    "Conjuration"
+                                ]
                             },
                             "level": {
                                 "type": "integer",
@@ -641,9 +649,22 @@ async def mcp_endpoint(request: Request):
                             "title": "Fireball",
                             "casting_time": "1 action",
                             "range": "150 feet",
-                            "components": "V, S, M (a tiny ball of bat guano and sulfur)",
+                            "components": (
+                                "V, S, M (bat guano and sulfur)"
+                            ),
                             "duration": "Instantaneous",
-                            "description": "A bright streak flashes from your pointing finger to a point you choose within range and then blossoms with a low roar into an explosion of flame. Each creature in a 20-foot-radius sphere centered on that point must make a Dexterity saving throw. A target takes 8d6 fire damage on a failed save, or half as much damage on a successful one. The fire spreads around corners. It ignites flammable objects in the area that aren't being worn or carried.",
+                            "description": (
+                                "A bright streak flashes from your "
+                                "pointing finger to a point you choose "
+                                "within range and then blossoms with a "
+                                "low roar into an explosion of flame. "
+                                "Each creature in a 20-foot-radius "
+                                "sphere centered on that point must make "
+                                "a Dexterity saving throw. A target "
+                                "takes 8d6 fire damage on a failed save, "
+                                "or half as much damage on a successful "
+                                "one."
+                            ),
                             "school": "Evocation",
                             "level": 3
                         }
@@ -656,7 +677,14 @@ async def mcp_endpoint(request: Request):
                             "range": "Self",
                             "components": "V, S",
                             "duration": "1 round",
-                            "description": "An invisible barrier of magical force appears and protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from magic missile.",
+                            "description": (
+                                "An invisible barrier of magical force "
+                                "appears and protects you. Until the "
+                                "start of your next turn, you have a +5 "
+                                "bonus to AC, including against the "
+                                "triggering attack, and you take no "
+                                "damage from magic missile."
+                            ),
                             "school": "Abjuration",
                             "level": 1
                         }
