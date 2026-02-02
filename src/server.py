@@ -361,6 +361,9 @@ async def mcp_endpoint(request: Request):
 
     # Map MCP tool names to generators and MCP session methods
     if method in ("generate_spell_card_stream", "tools/call"):
+        # Extract metadata if present (for tracing, auth, etc.)
+        metadata = params.get("_meta", {})
+
         # tools/call params may include the tool name under various keys
         if method == "tools/call":
             # common shapes:
@@ -377,6 +380,12 @@ async def mcp_endpoint(request: Request):
                 or params.get("arguments")
                 or {}
             )
+            # Extract metadata from various possible locations
+            metadata = (
+                params.get("metadata", {})
+                or params.get("_meta", {})
+                or tool_params.get("_meta", {})
+            )
             # If tool is not specified, try to infer
             generator_name = tool_params.get(
                 "generator") if isinstance(tool_params, dict) else None
@@ -387,6 +396,10 @@ async def mcp_endpoint(request: Request):
             params = tool_params or {}
         else:
             generator_name = params.get("generator", "plain")
+
+        # Log metadata if present (for debugging/tracing)
+        if metadata:
+            logger.info(f"Request metadata: {metadata}")
 
         if generator_name not in VALID_GENERATORS:
             resp = {
@@ -500,27 +513,118 @@ async def mcp_endpoint(request: Request):
                 "properties": {
                     "generator": {
                         "type": "string",
+                        "title": "Generator Type",
                         "description": (
-                            f"Card generator to use. Options: "
-                            f"{', '.join(VALID_GENERATORS)}"
+                            "Which rendering backend to use for the card. "
+                            "Each generator has a unique visual style."
                         ),
-                        "default": "plain"
+                        "enum": list(VALID_GENERATORS),
+                        "default": "plain",
+                        "examples": ["plain", "tornioduva"]
                     },
                     "spell_data": {
                         "type": "object",
-                        "description": "Spell details",
+                        "title": "Spell Information",
+                        "description": (
+                            "All properties that define the spell card"
+                        ),
                         "properties": {
-                            "title": {"type": "string"},
-                            "casting_time": {"type": "string"},
-                            "range": {"type": "string"},
-                            "components": {"type": "string"},
-                            "duration": {"type": "string"},
-                            "description": {"type": "string"},
-                            "school": {"type": "string"},
+                            "title": {
+                                "type": "string",
+                                "title": "Spell Name",
+                                "description": (
+                                    "The name printed at the top of the card"
+                                ),
+                                "examples": ["Fireball", "Cure Wounds", "Shield"]
+                            },
+                            "casting_time": {
+                                "type": "string",
+                                "title": "Casting Time",
+                                "description": (
+                                    "How long the spell takes to cast"
+                                ),
+                                "examples": [
+                                    "1 action",
+                                    "1 bonus action",
+                                    "1 reaction",
+                                    "1 minute"
+                                ]
+                            },
+                            "range": {
+                                "type": "string",
+                                "title": "Range",
+                                "description": "Distance or area affected",
+                                "examples": [
+                                    "150 feet",
+                                    "Self",
+                                    "Touch",
+                                    "60 feet"
+                                ]
+                            },
+                            "components": {
+                                "type": "string",
+                                "title": "Components",
+                                "description": (
+                                    "V (Verbal), S (Somatic), M (Material) "
+                                    "components required"
+                                ),
+                                "examples": [
+                                    "V, S",
+                                    "V, S, M (a tiny ball of bat guano and sulfur)",
+                                    "S, M (a sprig of mistletoe)"
+                                ]
+                            },
+                            "duration": {
+                                "type": "string",
+                                "title": "Duration",
+                                "description": "How long the spell lasts",
+                                "examples": [
+                                    "Instantaneous",
+                                    "Concentration, up to 1 minute",
+                                    "1 hour",
+                                    "Until dispelled"
+                                ]
+                            },
+                            "description": {
+                                "type": "string",
+                                "title": "Description",
+                                "description": (
+                                    "Full spell effect text explaining what "
+                                    "the spell does"
+                                ),
+                                "examples": [
+                                    "A bright streak flashes from your "
+                                    "pointing finger to a point you choose..."
+                                ]
+                            },
+                            "school": {
+                                "type": "string",
+                                "title": "School of Magic",
+                                "description": (
+                                    "The magical school this spell belongs to"
+                                ),
+                                "enum": [
+                                    "Abjuration",
+                                    "Conjuration",
+                                    "Divination",
+                                    "Enchantment",
+                                    "Evocation",
+                                    "Illusion",
+                                    "Necromancy",
+                                    "Transmutation"
+                                ],
+                                "examples": ["Evocation", "Abjuration", "Conjuration"]
+                            },
                             "level": {
                                 "type": "integer",
+                                "title": "Spell Level",
+                                "description": (
+                                    "Spell level from 0 (cantrip) to 9 "
+                                    "(highest level)"
+                                ),
                                 "minimum": 0,
-                                "maximum": 9
+                                "maximum": 9,
+                                "examples": [0, 1, 3, 9]
                             }
                         },
                         "required": [
@@ -529,7 +633,35 @@ async def mcp_endpoint(request: Request):
                         ]
                     }
                 },
-                "required": ["spell_data"]
+                "required": ["spell_data"],
+                "examples": [
+                    {
+                        "generator": "plain",
+                        "spell_data": {
+                            "title": "Fireball",
+                            "casting_time": "1 action",
+                            "range": "150 feet",
+                            "components": "V, S, M (a tiny ball of bat guano and sulfur)",
+                            "duration": "Instantaneous",
+                            "description": "A bright streak flashes from your pointing finger to a point you choose within range and then blossoms with a low roar into an explosion of flame. Each creature in a 20-foot-radius sphere centered on that point must make a Dexterity saving throw. A target takes 8d6 fire damage on a failed save, or half as much damage on a successful one. The fire spreads around corners. It ignites flammable objects in the area that aren't being worn or carried.",
+                            "school": "Evocation",
+                            "level": 3
+                        }
+                    },
+                    {
+                        "generator": "tornioduva",
+                        "spell_data": {
+                            "title": "Shield",
+                            "casting_time": "1 reaction",
+                            "range": "Self",
+                            "components": "V, S",
+                            "duration": "1 round",
+                            "description": "An invisible barrier of magical force appears and protects you. Until the start of your next turn, you have a +5 bonus to AC, including against the triggering attack, and you take no damage from magic missile.",
+                            "school": "Abjuration",
+                            "level": 1
+                        }
+                    }
+                ]
             }
         }]
         response = {
