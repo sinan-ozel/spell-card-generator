@@ -829,5 +829,116 @@ def test_mcp_progress_event_structure():
         assert "status" in params or "progress" in params
 
 
+def test_mcp_schema_annotations():
+    """Test that tool schema includes proper annotations for Inspector."""
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "list_tools",
+            "id": "schema-test"
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    tools = data["result"]["tools"]
+
+    # Find our tool
+    spell_tool = next(
+        (t for t in tools if t["name"] == "generate_spell_card_stream"),
+        None
+    )
+    assert spell_tool is not None
+
+    schema = spell_tool["inputSchema"]
+
+    # Check top-level schema has examples
+    assert "examples" in schema
+    assert len(schema["examples"]) >= 1
+
+    # Check generator field has title, description, enum
+    generator_field = schema["properties"]["generator"]
+    assert "title" in generator_field
+    assert generator_field["title"] == "Generator Type"
+    assert "description" in generator_field
+    assert "enum" in generator_field
+    assert "plain" in generator_field["enum"]
+    assert "examples" in generator_field
+
+    # Check spell_data has title and description
+    spell_data_field = schema["properties"]["spell_data"]
+    assert "title" in spell_data_field
+    assert spell_data_field["title"] == "Spell Information"
+    assert "description" in spell_data_field
+
+    # Check individual spell fields have annotations
+    spell_props = spell_data_field["properties"]
+
+    # title field
+    assert "title" in spell_props["title"]
+    assert spell_props["title"]["title"] == "Spell Name"
+    assert "description" in spell_props["title"]
+    assert "examples" in spell_props["title"]
+
+    # school field should have enum
+    assert "enum" in spell_props["school"]
+    schools = spell_props["school"]["enum"]
+    assert "Evocation" in schools
+    assert "Abjuration" in schools
+    assert len(schools) == 8  # All 8 D&D magic schools
+
+    # level field should have constraints
+    assert spell_props["level"]["minimum"] == 0
+    assert spell_props["level"]["maximum"] == 9
+    assert "examples" in spell_props["level"]
+
+
+def test_mcp_metadata_support():
+    """Test that metadata is accepted and logged (doesn't break calls)."""
+    spell_data = {
+        "title": "Test Spell",
+        "casting_time": "1 action",
+        "range": "Self",
+        "components": "V, S",
+        "duration": "Instantaneous",
+        "description": "A test spell for metadata validation",
+        "school": "Evocation",
+        "level": 1
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": "generate_spell_card_stream",
+                "arguments": {
+                    "generator": "plain",
+                    "spell_data": spell_data
+                },
+                "metadata": {
+                    "request_id": "test-123",
+                    "preview": True,
+                    "locale": "en-US"
+                }
+            },
+            "id": "metadata-test"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+
+    # Parse the stream and ensure it completes successfully
+    events = parse_stream_events(response)
+    assert len(events) > 0
+
+    # Should have a final result
+    result_events = [e for e in events if "result" in e and "id" in e]
+    assert len(result_events) > 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
