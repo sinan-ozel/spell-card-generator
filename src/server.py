@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.4.0",
+    version="0.4.1",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -422,7 +422,9 @@ async def mcp_endpoint(request: Request):
 
         async def broadcast_generator():
             try:
+                last_event = None
                 async for event in generator_fn(params, None):
+                    last_event = event
                     # Progress notifications must NOT have 'id' field
                     data = {
                         "jsonrpc": "2.0",
@@ -432,9 +434,33 @@ async def mcp_endpoint(request: Request):
                     for q in list(connections):
                         await q.put(data)
                 # final result response (has 'id', no 'method')
+                # Include the card data from the last event
+                result_data = {"status": "completed"}
+                if last_event and "card" in last_event:
+                    result_data["card"] = last_event["card"]
+                    # Format as MCP content for better compatibility
+                    card_title = last_event['card'].get('title', 'Unknown')
+                    card_image = last_event['card']['image_data']
+                    spell_name = last_event['card'].get('title', 'spell')
+                    result_data["content"] = [
+                        {
+                            "type": "text",
+                            "text": f"Generated spell card: {card_title}"
+                        },
+                        {
+                            "type": "resource",
+                            "resource": {
+                                "uri": (
+                                    f"data:image/jpeg;base64,{card_image}"
+                                ),
+                                "mimeType": "image/jpeg",
+                                "text": f"Spell card for {spell_name}"
+                            }
+                        }
+                    ]
                 result = {
                     "jsonrpc": "2.0",
-                    "result": {"status": "completed"},
+                    "result": result_data,
                     "id": request_id,
                 }
                 for q in list(connections):
@@ -469,21 +495,48 @@ async def mcp_endpoint(request: Request):
         # bound to this POST caller
         async def stream_generator():
             try:
+                last_event = None
                 async for event in generator_fn(params, None):
+                    last_event = event
                     # Progress notifications must NOT have 'id' field
                     data = {
                         "jsonrpc": "2.0",
                         "method": "tool.progress",
                         "params": event,
                     }
-                    yield json.dumps(data) + "\n"
+                    # Use SSE format with 'data:' prefix
+                    yield f"data: {json.dumps(data)}\n\n"
                 # final result response (has 'id', no 'method')
+                # Include the card data from the last event
+                result_data = {"status": "completed"}
+                if last_event and "card" in last_event:
+                    result_data["card"] = last_event["card"]
+                    # Format as MCP content for better compatibility
+                    card_title = last_event['card'].get('title', 'Unknown')
+                    card_image = last_event['card']['image_data']
+                    spell_name = last_event['card'].get('title', 'spell')
+                    result_data["content"] = [
+                        {
+                            "type": "text",
+                            "text": f"Generated spell card: {card_title}"
+                        },
+                        {
+                            "type": "resource",
+                            "resource": {
+                                "uri": (
+                                    f"data:image/jpeg;base64,{card_image}"
+                                ),
+                                "mimeType": "image/jpeg",
+                                "text": f"Spell card for {spell_name}"
+                            }
+                        }
+                    ]
                 result = {
                     "jsonrpc": "2.0",
                     "id": request_id,
-                    "result": {"status": "completed"}
+                    "result": result_data
                 }
-                yield json.dumps(result) + "\n"
+                yield f"data: {json.dumps(result)}\n\n"
             except Exception as e:
                 logger.error(f"Error in MCP stream: {e}", exc_info=True)
                 error_data = {
@@ -494,11 +547,11 @@ async def mcp_endpoint(request: Request):
                     },
                     "id": request_id
                 }
-                yield json.dumps(error_data) + "\n"
+                yield f"data: {json.dumps(error_data)}\n\n"
 
         return StreamingResponse(
             stream_generator(),
-            media_type="application/json"
+            media_type="text/event-stream"
         )
 
     elif method in ("list_tools", "tools/list"):

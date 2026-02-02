@@ -940,5 +940,142 @@ def test_mcp_metadata_support():
     assert len(result_events) > 0
 
 
+def test_mcp_end_to_end_card_generation():
+    """End-to-end test: Call the tool and verify we get an actual card with image data."""
+    import base64
+    from io import BytesIO
+    from PIL import Image
+
+    spell_data = {
+        "title": "Lightning Bolt",
+        "casting_time": "1 action",
+        "range": "Self (100-foot line)",
+        "components": "V, S, M",
+        "duration": "Instantaneous",
+        "description": "A stroke of lightning forming a line 100 feet long and 5 feet wide blasts out from you in a direction you choose. Each creature in the line must make a Dexterity saving throw. A creature takes 8d6 lightning damage on a failed save, or half as much damage on a successful one.",
+        "school": "Evocation",
+        "level": 3
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "generator": "plain",
+                "spell_data": spell_data
+            },
+            "id": "e2e-test-card"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+
+    # Parse all events from the stream
+    events = parse_stream_events(response)
+    assert len(events) > 0, "Should receive at least one event"
+
+    # Find progress events
+    progress_events = [e for e in events if e.get("method") == "tool.progress"]
+    assert len(progress_events) > 0, "Should have progress events"
+
+    # Verify progress values increase
+    progress_values = []
+    error_messages = []
+    for event in progress_events:
+        params = event.get("params", {})
+        if "progress" in params:
+            progress_values.append(params["progress"])
+        if params.get("status") == "error":
+            error_messages.append(params.get("message", "Unknown error"))
+
+    assert len(progress_values) > 0, "Should have progress values"
+    # Progress should be increasing (though not necessarily monotonic due to completion)
+    if max(progress_values) != 100:
+        error_info = f"Progress values: {progress_values}. Errors: {error_messages}"
+        assert False, f"Final progress should be 100. {error_info}"
+
+    # Find the completed event with card data
+    completed_events = [
+        e for e in progress_events
+        if e.get("params", {}).get("status") == "completed"
+    ]
+    assert len(completed_events) > 0, "Should have at least one completed event"
+
+    # Get the final completed event (the one with the card)
+    final_event = completed_events[-1]
+    params = final_event["params"]
+
+    # Verify card data structure
+    assert "card" in params, "Completed event should have 'card' field"
+    card = params["card"]
+
+    assert "title" in card, "Card should have title"
+    assert card["title"] == spell_data["title"], f"Card title should match: expected '{spell_data['title']}', got '{card['title']}'"
+
+    assert "level" in card, "Card should have level"
+    assert card["level"] == spell_data["level"], f"Card level should match: expected {spell_data['level']}, got {card['level']}"
+
+    assert "image_data" in card, "Card should have image_data"
+    assert "format" in card, "Card should have format"
+    assert card["format"] == "jpeg", "Card format should be 'jpeg'"
+
+    # Verify the image data is valid base64 and can be decoded as an image
+    image_data = card["image_data"]
+    assert isinstance(image_data, str), "Image data should be a string"
+    assert len(image_data) > 0, "Image data should not be empty"
+
+    try:
+        # Decode base64
+        image_bytes = base64.b64decode(image_data)
+        assert len(image_bytes) > 0, "Decoded image should not be empty"
+
+        # Try to open as image
+        image = Image.open(BytesIO(image_bytes))
+
+        # Verify image properties
+        assert image.format == "JPEG", "Image format should be JPEG"
+        assert image.size[0] > 0, "Image width should be positive"
+        assert image.size[1] > 0, "Image height should be positive"
+
+        # Verify reasonable dimensions (spell cards should be reasonably sized)
+        assert image.size[0] >= 200, "Image width should be at least 200px"
+        assert image.size[1] >= 200, "Image height should be at least 200px"
+
+    except Exception as e:
+        pytest.fail(f"Failed to decode or validate image: {e}")
+
+    # Verify we got a proper JSON-RPC result frame at the end
+    result_frames = [e for e in events if "result" in e and "id" in e]
+    assert len(result_frames) > 0, "Should have at least one result frame"
+
+    final_result = result_frames[-1]
+    assert final_result["jsonrpc"] == "2.0", "Should be JSON-RPC 2.0"
+    assert final_result["id"] == "e2e-test-card", "Should have matching request ID"
+    assert "result" in final_result, "Should have result field"
+
+    # Verify the final result includes the card data
+    result_data = final_result["result"]
+    assert result_data["status"] == "completed", "Result should show completed status"
+    assert "card" in result_data, "Result should include card data"
+    assert result_data["card"]["title"] == spell_data["title"], "Result card title should match"
+
+    # Verify MCP content format (for Inspector compatibility)
+    assert "content" in result_data, "Result should include content array"
+    assert isinstance(result_data["content"], list), "Content should be an array"
+    assert len(result_data["content"]) > 0, "Content should not be empty"
+
+    # Check for image resource in content
+    resource_items = [item for item in result_data["content"] if item.get("type") == "resource"]
+    assert len(resource_items) > 0, "Content should include resource item with image"
+
+    image_resource = resource_items[0]["resource"]
+    assert "uri" in image_resource, "Resource should have URI"
+    assert image_resource["uri"].startswith("data:image/jpeg;base64,"), "URI should be base64 data URI"
+    assert image_resource["mimeType"] == "image/jpeg", "Resource should be JPEG mime type"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

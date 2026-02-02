@@ -7,6 +7,7 @@ RUN pip install --no-cache-dir pytest
 RUN pip install --no-cache-dir pytest-depends
 RUN pip install --no-cache-dir requests
 RUN pip install --no-cache-dir pytest-openapi==0.1.5
+RUN pip install --no-cache-dir Pillow
 
 # Copy tests and optionally source code if needed for imports
 COPY test_*.py .

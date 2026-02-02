@@ -16,6 +16,7 @@ Supports multiple card formatters and asynchronous card generation with optional
 ## Features
 
 - Generate spell cards via a REST API
+- As of 0.4.1, it is also an MCP server, designed to work with agents
 - Multiple card formatters (easily extensible)
 - Asynchronous card creation with optional callback URL
 - Dockerized for easy deployment and testing
