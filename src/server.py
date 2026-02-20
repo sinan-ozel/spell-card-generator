@@ -48,8 +48,9 @@ CARDS_DIR = "cards"
 if not os.path.exists(CARDS_DIR):
     os.makedirs(CARDS_DIR)
     logger.warning(
-        f"Created '{CARDS_DIR}' directory. For persistent storage, mount a volume to /app/cards "
-        f"in your Docker container: docker run -v ./cards:/app/cards ..."
+        f"Created '{CARDS_DIR}' directory. For persistent storage, mount "
+        f"a volume to /app/cards in your Docker container: "
+        f"docker run -v ./cards:/app/cards ..."
     )
 
 app.mount("/cards", StaticFiles(directory=CARDS_DIR), name="cards")
