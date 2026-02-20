@@ -36,7 +36,7 @@ cd spell-card-generator
 ### 2. **Build and run with Docker Compose**
 
 ```bash
-docker compose -f tests/docker-compose.yaml --project-directory tests up --build
+docker compose docker-compose.yaml up --build
 ```
 
 ### 3. **API Usage Example**
@@ -92,6 +92,15 @@ Response:
   "plain": "available"
 }
 ```
+
+### 5. **MCP Usage**
+
+Run along with the instpector to inspect:
+```
+docker compose -f mcp/docker-compose.yaml up --build
+```
+
+
 
 ---
 

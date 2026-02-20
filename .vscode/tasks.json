@@ -21,6 +21,22 @@
       }
     },
     {
+      "label": "tests (no mount)",
+      "type": "shell",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f", "${workspaceFolder}/tests/docker-compose-no-mount.yaml",
+        "--project-directory", "${workspaceFolder}/tests",
+        "up",
+        "--build",
+        "--abort-on-container-exit",
+        "--exit-code-from", "test"
+      ],
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
       "label": "generate card from environmental variables in /docker-compose.yaml",
       "type": "shell",
       "command": "docker",

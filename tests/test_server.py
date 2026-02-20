@@ -134,3 +134,43 @@ def test_generators_endpoint():
         assert "status" in entry, "Each entry should have a 'status' key"
         assert "information" in entry, "Each entry should have an 'information' key"
         assert isinstance(entry["information"], list), "'information' should be a list of strings"
+
+
+def test_generate_card_no_mount():
+    """Test that card generation works even without a mounted cards directory.
+
+    This test verifies that:
+    1. The server starts successfully even without the cards mount
+    2. Cards can still be generated (stored in container's ephemeral storage)
+    3. The generated card can be accessed via the API
+    """
+    # Use a callback server to get the card URL
+    server_thread = threading.Thread(target=run_callback_server, daemon=True)
+    server_thread.start()
+
+    payload = {
+        "spell_data": spell_data,
+        "callback_url": CALLBACK_URL,
+    }
+    r = requests.post(f"{BASE_URL}/v1/generate", json=payload)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued"
+
+    # Wait for callback (max 20 seconds)
+    for _ in range(40):
+        if "payload" in callback_result:
+            break
+        time.sleep(0.5)
+    else:
+        assert False, "Callback not received - card was not generated"
+
+    cb = callback_result["payload"]
+    assert cb["status"] == "ready", f"Expected status 'ready', got {cb['status']}"
+    assert "url" in cb, "Callback should contain card URL"
+
+    # Download the card to verify it exists
+    card_url = f"{BASE_URL}{cb['url']}"
+    card_resp = requests.get(card_url)
+    assert card_resp.status_code == 200, f"Card not accessible at {card_url}"
+    assert card_resp.headers.get("content-type", "").startswith("image/"), \
+        "Card should be an image"

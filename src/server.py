@@ -37,13 +37,22 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.4.1",
+    version="0.4.2",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
 
-app.mount("/cards", StaticFiles(directory="cards"), name="cards")
+# Ensure cards directory exists
+CARDS_DIR = "cards"
+if not os.path.exists(CARDS_DIR):
+    os.makedirs(CARDS_DIR)
+    logger.warning(
+        f"Created '{CARDS_DIR}' directory. For persistent storage, mount a volume to /app/cards "
+        f"in your Docker container: docker run -v ./cards:/app/cards ..."
+    )
+
+app.mount("/cards", StaticFiles(directory=CARDS_DIR), name="cards")
 
 
 class SpellData(BaseModel):

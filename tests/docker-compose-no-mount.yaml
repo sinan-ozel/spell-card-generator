@@ -1,0 +1,33 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile  # uses Dockerfile in project root
+    ports:
+      - "8001:8000"
+    # No cards volume mount - testing without persistent storage
+    networks:
+      - spell-card-test-no-mount
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import sys,urllib.request; sys.exit(urllib.request.urlopen('http://localhost:8000/docs').status!=200)"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile  # test container
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      - BASE_URL=http://app:8000
+    networks:
+      - spell-card-test-no-mount
+    command: ["pytest", "test_server.py::test_generate_card_no_mount", "-v"]
+
+
+networks:
+  spell-card-test-no-mount:
+    driver: bridge
