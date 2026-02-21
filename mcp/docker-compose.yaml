@@ -41,6 +41,7 @@ services:
       - ALLOWED_ORIGINS=http://127.0.0.1:6274,http://localhost:6274
       # Configure inspector to connect to our MCP server
       - MCP_SERVER_URL=http://spell-card-server:8000/mcp
+      - DANGEROUSLY_OMIT_AUTH=true
 
 networks:
   mcp-network:
