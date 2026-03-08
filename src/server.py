@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.4.2",
+    version="0.4.3",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -583,7 +583,7 @@ async def mcp_endpoint(request: Request):
                         ),
                         "enum": list(VALID_GENERATORS),
                         "default": "plain",
-                        "examples": ["plain", "tornioduva"]
+                        "examples": list(VALID_GENERATORS)
                     },
                     "spell_data": {
                         "type": "object",
