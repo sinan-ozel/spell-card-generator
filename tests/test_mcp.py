@@ -201,6 +201,44 @@ def test_mcp_generate_with_tornioduva():
     assert completed
 
 
+def test_mcp_generate_without_generator():
+    """Test that omitting generator still produces a readable card."""
+    spell_data = {
+        "title": "Shield",
+        "casting_time": "1 reaction",
+        "range": "Self",
+        "components": "V, S",
+        "duration": "1 round",
+        "description": "An invisible barrier of magical force appears and protects you.",
+        "school": "Abjuration",
+        "level": 1
+    }
+
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "method": "generate_spell_card_stream",
+            "params": {
+                "spell_data": spell_data
+            },
+            "id": "test-no-generator"
+        },
+        stream=True
+    )
+
+    assert response.status_code == 200
+
+    events = parse_stream_events(response)
+    completed = any(
+        e.get("method") == "tool.progress" and
+        e.get("params", {}).get("status") == "completed" and
+        "card" in e.get("params", {})
+        for e in events
+    )
+    assert completed
+
+
 def test_mcp_invalid_generator():
     """Test that invalid generator returns error."""
     spell_data = {
@@ -1027,25 +1065,21 @@ def test_mcp_end_to_end_card_generation():
     assert isinstance(image_data, str), "Image data should be a string"
     assert len(image_data) > 0, "Image data should not be empty"
 
-    try:
-        # Decode base64
-        image_bytes = base64.b64decode(image_data)
-        assert len(image_bytes) > 0, "Decoded image should not be empty"
+    # Decode base64
+    image_bytes = base64.b64decode(image_data)
+    assert len(image_bytes) > 0, "Decoded image should not be empty"
 
-        # Try to open as image
-        image = Image.open(BytesIO(image_bytes))
+    # Try to open as image
+    image = Image.open(BytesIO(image_bytes))
 
-        # Verify image properties
-        assert image.format == "JPEG", "Image format should be JPEG"
-        assert image.size[0] > 0, "Image width should be positive"
-        assert image.size[1] > 0, "Image height should be positive"
+    # Verify image properties
+    assert image.format == "JPEG", "Image format should be JPEG"
+    assert image.size[0] > 0, "Image width should be positive"
+    assert image.size[1] > 0, "Image height should be positive"
 
-        # Verify reasonable dimensions (spell cards should be reasonably sized)
-        assert image.size[0] >= 200, "Image width should be at least 200px"
-        assert image.size[1] >= 200, "Image height should be at least 200px"
-
-    except Exception as e:
-        pytest.fail(f"Failed to decode or validate image: {e}")
+    # Verify reasonable dimensions (spell cards should be reasonably sized)
+    assert image.size[0] >= 200, "Image width should be at least 200px"
+    assert image.size[1] >= 200, "Image height should be at least 200px"
 
     # Verify we got a proper JSON-RPC result frame at the end
     result_frames = [e for e in events if "result" in e and "id" in e]
