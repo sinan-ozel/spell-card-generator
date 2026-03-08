@@ -1,13 +1,16 @@
 import os
 from importlib import import_module
+from pathlib import Path
 
 from spell import Spell
 
 GENERATOR = os.environ.get("GENERATOR", "plain")
-VALID_GENERATORS = [
-    "plain",
-    "tornioduva",
-]
+
+_generators_dir = Path(__file__).parent / "generators"
+VALID_GENERATORS = sorted(
+    p.stem for p in _generators_dir.glob("*.py") if p.stem != "__init__"
+)
+
 if GENERATOR not in VALID_GENERATORS:
     raise ValueError(
         f"GENERATOR is {GENERATOR}, but expecting one of: {VALID_GENERATORS}"
