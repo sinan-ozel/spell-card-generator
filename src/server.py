@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Spell Card Generator API",
     description="API for generating spell cards.",
-    version="0.4.3",
+    version="0.4.4",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json",
@@ -366,11 +366,22 @@ async def mcp_endpoint(request: Request):
         }
 
     method = body.get("method") if body else None
-    params = body.get("params") or {}
+    raw_params = body.get("params")
+    params = raw_params or {}
     request_id = body.get("id")
 
     # Map MCP tool names to generators and MCP session methods
     if method in ("generate_spell_card_stream", "tools/call"):
+        if method == "tools/call" and raw_params is None:
+            resp = {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32600,
+                    "message": "Invalid Request: params must not be null"
+                },
+                "id": request_id,
+            }
+            return resp
         # Extract metadata if present (for tracing, auth, etc.)
         metadata = params.get("_meta", {})
 

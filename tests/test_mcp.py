@@ -1111,5 +1111,24 @@ def test_mcp_end_to_end_card_generation():
     assert image_resource["mimeType"] == "image/jpeg", "Resource should be JPEG mime type"
 
 
+def test_mcp_tools_call_null_params():
+    """Test that tools/call with null params returns -32600 Invalid Request."""
+    response = requests.post(
+        f"{BASE_URL}/mcp",
+        json={
+            "jsonrpc": "2.0",
+            "id": 99,
+            "method": "tools/call",
+            "params": None,
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert "error" in data, f"Expected error but got: {data!r}"
+    assert data["error"]["code"] == -32600, \
+        f"Expected -32600 Invalid Request but got: {data!r}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
